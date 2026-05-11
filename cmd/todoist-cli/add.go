@@ -1,28 +1,37 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"todoist-cli/internal/config"
-	ryodb "todoist-cli/internal/db"
+	"todoist-cli/internal/db"
+	"todoist-cli/internal/tasks"
 	"todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	addProject string
-	addLabels  string
+	addProject     string
+	addLabels      []string
+	addDescription string
 )
 
 var addCmd = &cobra.Command{
-	Use:   "add <content>",
-	Short: "Create a task",
-	Args:  cobra.MinimumNArgs(1),
+	Use:               "add <content>",
+	Short:             "Create a task",
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		content := strings.Join(args, " ")
+		ctx := cmd.Context()
+
+		conn, err := db.Open()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
 
 		token, err := config.GetToken()
 		if err != nil {
@@ -30,38 +39,81 @@ var addCmd = &cobra.Command{
 		}
 		client := todoist.New(token)
 
-		req := todoist.CreateTaskRequest{Content: content}
+		req := todoist.CreateTaskRequest{Content: content, Description: addDescription}
 		if addProject != "" {
-			req.ProjectID = addProject
+			id, err := tasks.ProjectByName(ctx, conn, addProject)
+			if err != nil {
+				return err
+			}
+			req.ProjectID = id
 		}
-		if addLabels != "" {
-			req.Labels = resolveLabels(cmd.Context(), client, addLabels)
+		if len(addLabels) > 0 {
+			req.Labels = addLabels
 		}
 
-		task, err := client.CreateTask(cmd.Context(), req)
+		task, err := client.CreateTask(ctx, req)
 		if err != nil {
 			return err
 		}
 
-		// Optimistic local insert — best effort.
-		if db, err := ryodb.Open(); err == nil {
-			defer db.Close()
-			upsertTasks(cmd.Context(), db, []todoist.Task{*task})
-		}
+		upsertTasks(ctx, conn, []todoist.Task{*task})
 
 		fmt.Println(task.ID)
 		return nil
 	},
 }
 
-// resolveLabels maps label IDs or names from --labels CSV to label names for the API.
-// The Todoist v1 API accepts label names on tasks, not IDs.
-func resolveLabels(ctx context.Context, client *todoist.Client, csv string) []string {
-	return strings.Split(csv, ",")
+func projectCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	conn, err := db.Open()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer conn.Close()
+	rows, err := conn.QueryContext(cmd.Context(),
+		`SELECT id, name FROM projects WHERE is_archived=0 ORDER BY ord`)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		out = append(out, name+"\t"+id)
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+func labelCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	conn, err := db.Open()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer conn.Close()
+	rows, err := conn.QueryContext(cmd.Context(),
+		`SELECT id, name FROM labels ORDER BY ord`)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		out = append(out, name+"\t"+id)
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 func init() {
-	addCmd.Flags().StringVar(&addProject, "project", "", "project ID")
-	addCmd.Flags().StringVar(&addLabels, "labels", "", "comma-separated label IDs")
+	addCmd.Flags().StringVarP(&addProject, "project", "p", "", "project name")
+	addCmd.Flags().StringArrayVarP(&addLabels, "label", "l", nil, "label name (repeatable: -l <name> -l <name>)")
+	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
+	addCmd.RegisterFlagCompletionFunc("project", projectCompleter)
+	addCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(addCmd)
 }

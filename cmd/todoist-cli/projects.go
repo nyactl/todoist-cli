@@ -5,21 +5,22 @@ import (
 	"database/sql"
 	"fmt"
 
-	ryodb "todoist-cli/internal/db"
+	"todoist-cli/internal/db"
 
 	"github.com/spf13/cobra"
 )
 
 var projectsCmd = &cobra.Command{
-	Use:   "projects",
-	Short: "List all projects (id<TAB>name per line)",
+	Use:               "projects",
+	Short:             "List all projects (id and name, tab-separated)",
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		db, err := ryodb.Open()
+		conn, err := db.Open()
 		if err != nil {
 			return err
 		}
-		defer db.Close()
-		return printProjects(cmd.Context(), db)
+		defer conn.Close()
+		return printProjects(cmd.Context(), conn)
 	},
 }
 

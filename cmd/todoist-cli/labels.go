@@ -5,21 +5,22 @@ import (
 	"database/sql"
 	"fmt"
 
-	ryodb "todoist-cli/internal/db"
+	"todoist-cli/internal/db"
 
 	"github.com/spf13/cobra"
 )
 
 var labelsCmd = &cobra.Command{
-	Use:   "labels",
-	Short: "List all personal labels (id<TAB>name per line)",
+	Use:               "labels",
+	Short:             "List all personal labels (id and name, tab-separated)",
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		db, err := ryodb.Open()
+		conn, err := db.Open()
 		if err != nil {
 			return err
 		}
-		defer db.Close()
-		return printLabels(cmd.Context(), db)
+		defer conn.Close()
+		return printLabels(cmd.Context(), conn)
 	},
 }
 

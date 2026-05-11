@@ -40,7 +40,8 @@ var authLoginCmd = &cobra.Command{
 			return fmt.Errorf("save token: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "logged in — %d projects found\n", len(projects))
-		return nil
+		fmt.Fprintln(os.Stderr, "syncing...")
+		return syncCmd.RunE(cmd, nil)
 	},
 }
 
