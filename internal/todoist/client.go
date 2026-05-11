@@ -7,120 +7,120 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 )
 
 const baseURL = "https://api.todoist.com/api/v1"
 
 type Client struct {
-	token  string
-	http   *http.Client
+	token string
+	http  *http.Client
+}
+
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("todoist: HTTP %d: %s", e.StatusCode, e.Body)
 }
 
 func New(token string) *Client {
-	return &Client{token: token, http: &http.Client{}}
-}
-
-func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
-	return paginate[Project](ctx, c, "/projects")
-}
-
-func (c *Client) GetLabels(ctx context.Context) ([]Label, error) {
-	return paginate[Label](ctx, c, "/labels/personal")
-}
-
-func (c *Client) GetTasks(ctx context.Context, projectID string) ([]Task, error) {
-	path := "/tasks"
-	if projectID != "" {
-		path += "?project_id=" + projectID
+	return &Client{
+		token: token,
+		http:  &http.Client{Timeout: 10 * time.Second},
 	}
-	return paginate[Task](ctx, c, path)
 }
 
-func (c *Client) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	var t Task
-	if err := c.do(ctx, http.MethodPost, "/tasks", bytes.NewReader(body), &t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-func (c *Client) CloseTask(ctx context.Context, id string) error {
-	return c.do(ctx, http.MethodPost, "/tasks/"+id+"/close", nil, nil)
-}
-
-func (c *Client) ReopenTask(ctx context.Context, id string) error {
-	return c.do(ctx, http.MethodPost, "/tasks/"+id+"/reopen", nil, nil)
-}
-
-func (c *Client) GetTask(ctx context.Context, id string) (*Task, error) {
-	var t Task
-	if err := c.do(ctx, http.MethodGet, "/tasks/"+id, nil, &t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-func paginate[T any](ctx context.Context, c *Client, path string) ([]T, error) {
-	var all []T
-	cursor := ""
-	for {
-		sep := "?"
-		if len(path) > 0 && contains(path, '?') {
-			sep = "&"
-		}
-		url := path
-		if cursor != "" {
-			url = path + sep + "cursor=" + cursor
-		}
-		var page ResultPage[T]
-		if err := c.do(ctx, http.MethodGet, url, nil, &page); err != nil {
+func (c *Client) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
 			return nil, err
 		}
-		all = append(all, page.Results...)
-		if page.NextCursor == "" {
-			break
-		}
-		cursor = page.NextCursor
+		r = bytes.NewReader(b)
 	}
-	return all, nil
-}
-
-func (c *Client) do(ctx context.Context, method, path string, body io.Reader, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, r)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(b)}
 	}
-
-	if out != nil && resp.StatusCode != http.StatusNoContent {
-		return json.NewDecoder(resp.Body).Decode(out)
-	}
-	return nil
+	return resp, nil
 }
 
-func contains(s string, b byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == b {
-			return true
-		}
+func (c *Client) doJSON(ctx context.Context, method, path string, body, out any) error {
+	resp, err := c.do(ctx, method, path, body)
+	if err != nil {
+		return err
 	}
-	return false
+	defer resp.Body.Close()
+	if out == nil || resp.ContentLength == 0 {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func (c *Client) doQuery(ctx context.Context, path string, params url.Values, out any) error {
+	full := baseURL + path
+	if len(params) > 0 {
+		full += "?" + params.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return &APIError{StatusCode: resp.StatusCode, Body: string(b)}
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func queryAll[T any](c *Client, ctx context.Context, path string, params url.Values) ([]T, error) {
+	type page struct {
+		Results    []T    `json:"results"`
+		NextCursor string `json:"next_cursor"`
+	}
+	var all []T
+	cursor := ""
+	for {
+		p := url.Values{}
+		for k, v := range params {
+			p[k] = v
+		}
+		if cursor != "" {
+			p.Set("cursor", cursor)
+		}
+		var pg page
+		if err := c.doQuery(ctx, path, p, &pg); err != nil {
+			return nil, err
+		}
+		all = append(all, pg.Results...)
+		if pg.NextCursor == "" {
+			break
+		}
+		cursor = pg.NextCursor
+	}
+	return all, nil
 }

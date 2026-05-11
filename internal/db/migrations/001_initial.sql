@@ -2,10 +2,10 @@ CREATE TABLE IF NOT EXISTS projects (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     color       TEXT NOT NULL DEFAULT '',
-    parent_id   TEXT,
     ord         INTEGER NOT NULL DEFAULT 0,
     is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
-    is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1))
+    is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+    view_style  TEXT NOT NULL DEFAULT 'list'
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS labels (
@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS sections (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    ord         INTEGER NOT NULL DEFAULT 0
+    ord         INTEGER NOT NULL DEFAULT 0,
+    is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -37,7 +38,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     due_datetime     TEXT,
     due_string       TEXT,
     due_is_recurring INTEGER NOT NULL DEFAULT 0 CHECK (due_is_recurring IN (0, 1)),
+    due_timezone     TEXT,
     url              TEXT NOT NULL DEFAULT '',
+    comment_count    INTEGER NOT NULL DEFAULT 0,
     created_at       TEXT NOT NULL DEFAULT ''
 ) STRICT;
 
@@ -57,6 +60,12 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project
 
 CREATE INDEX IF NOT EXISTS idx_tasks_due
     ON tasks (due_date) WHERE is_completed = 0 AND due_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_parent
+    ON tasks (parent_id) WHERE parent_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_section
+    ON tasks (section_id) WHERE section_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_task_labels_name
     ON task_labels (label_name);

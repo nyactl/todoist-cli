@@ -9,7 +9,7 @@ import (
 
 var root = &cobra.Command{
 	Use:   "todoist-cli",
-	Short: "A fast, offline-first Todoist terminal client",
+	Short: "A fast, minimal Todoist terminal client",
 }
 
 func main() {
