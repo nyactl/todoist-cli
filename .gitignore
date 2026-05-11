@@ -1,4 +1,4 @@
-todoist-cli
+/todoist-cli
 *.db
 *.db-wal
 *.db-shm
