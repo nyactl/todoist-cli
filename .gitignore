@@ -1,0 +1,4 @@
+todoist-cli
+*.db
+*.db-wal
+*.db-shm
