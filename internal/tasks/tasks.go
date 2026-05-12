@@ -146,6 +146,15 @@ func ProjectExists(ctx context.Context, db *sql.DB, projectID string) (bool, err
 	return n > 0, err
 }
 
+func SectionByName(ctx context.Context, db *sql.DB, name, projectID string) (id string, err error) {
+	err = db.QueryRowContext(ctx,
+		`SELECT id FROM sections WHERE name = ? AND project_id = ?`, name, projectID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("section %q not found in project — run: todoist-cli sync", name)
+	}
+	return id, err
+}
+
 func ProjectByName(ctx context.Context, db *sql.DB, name string) (id string, err error) {
 	err = db.QueryRowContext(ctx,
 		`SELECT id FROM projects WHERE name = ?`, name).Scan(&id)

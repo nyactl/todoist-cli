@@ -55,3 +55,13 @@ func (c *Client) DeleteTask(ctx context.Context, id string) error {
 	resp.Body.Close()
 	return nil
 }
+
+func (c *Client) MoveTaskToSection(ctx context.Context, taskID, sectionID string) error {
+	body := map[string]string{"section_id": sectionID}
+	resp, err := c.do(ctx, "POST", "/tasks/"+taskID+"/move", body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
