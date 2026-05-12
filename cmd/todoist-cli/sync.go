@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"todoist-cli/internal/config"
@@ -120,6 +121,22 @@ func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, er
 	items, err := client.GetTasks(ctx, "")
 	if err != nil {
 		return 0, err
+	}
+	ids := make([]any, len(items))
+	for i, t := range items {
+		ids[i] = t.ID
+	}
+	if len(ids) > 0 {
+		placeholders := strings.Repeat("?,", len(ids))
+		placeholders = placeholders[:len(placeholders)-1]
+		if _, err := db.ExecContext(ctx,
+			`DELETE FROM tasks WHERE id NOT IN (`+placeholders+`)`, ids...); err != nil {
+			return 0, fmt.Errorf("purge deleted tasks: %w", err)
+		}
+	} else {
+		if _, err := db.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
+			return 0, fmt.Errorf("purge all tasks: %w", err)
+		}
 	}
 	for _, t := range items {
 		var dueDate, dueDatetime, dueString, dueTZ *string
