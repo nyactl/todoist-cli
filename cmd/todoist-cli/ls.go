@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 var (
 	lsDone   string
 	lsLabels []string
+	lsBoard  bool
 )
 
 var lsCmd = &cobra.Command{
@@ -71,7 +73,11 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 				fmt.Println("no tasks")
 				return nil
 			}
-			printBySection(ts)
+			if lsBoard {
+				printBoard(ts)
+			} else {
+				printBySection(ts)
+			}
 		} else {
 			ts, err := tasks.DueToday(ctx, conn)
 			if err != nil {
@@ -303,10 +309,9 @@ func printBySection(ts []tasks.Task) {
 
 func printTask(t tasks.Task) {
 	pri := priorityMark(t.Priority)
-	id := shortID(t.ID)
 	due := formatDue(t.DueDate, t.DueDatetime)
-	content := truncate(t.Content, 40)
-	fmt.Printf("  %s  %s  %-40s  %s\n", pri, id, content, due)
+	content := truncate(t.Content, 50)
+	fmt.Printf("  %s  %-50s  %s\n", pri, content, due)
 }
 
 func priorityMark(p int) string {
@@ -417,9 +422,98 @@ func taskCompleter(cmd *cobra.Command, args []string, toComplete string) ([]stri
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
+func terminalWidth() int {
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		var n int
+		if _, err := fmt.Sscanf(cols, "%d", &n); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 120
+}
+
+func printBoard(ts []tasks.Task) {
+	type column struct {
+		name  string
+		tasks []tasks.Task
+	}
+	colMap := map[string]*column{}
+	var order []string
+	for _, t := range ts {
+		key := t.SectionName
+		if key == "" {
+			key = "(no section)"
+		}
+		if _, ok := colMap[key]; !ok {
+			order = append(order, key)
+			colMap[key] = &column{name: key}
+		}
+		colMap[key].tasks = append(colMap[key].tasks, t)
+	}
+
+	cols := make([]*column, len(order))
+	for i, k := range order {
+		cols[i] = colMap[k]
+	}
+
+	const sep = " │ "
+	width := terminalWidth()
+	colWidth := (width - len(sep)*(len(cols)-1)) / len(cols)
+	if colWidth < 20 {
+		colWidth = 20
+	}
+
+	// header
+	for i, col := range cols {
+		if i > 0 {
+			fmt.Print(sep)
+		}
+		fmt.Printf("%-*s", colWidth, truncate(col.name, colWidth))
+	}
+	fmt.Println()
+	// divider
+	for i := range cols {
+		if i > 0 {
+			fmt.Print(sep)
+		}
+		fmt.Print(strings.Repeat("─", colWidth))
+	}
+	fmt.Println()
+
+	// task rows — each column printed at the same row index
+	maxRows := 0
+	for _, col := range cols {
+		if len(col.tasks) > maxRows {
+			maxRows = len(col.tasks)
+		}
+	}
+	// pri(2) + space(1) = 3 fixed chars per task cell
+	const taskOverhead = 3
+	for row := 0; row < maxRows; row++ {
+		for i, col := range cols {
+			if i > 0 {
+				fmt.Print(sep)
+			}
+			if row < len(col.tasks) {
+				t := col.tasks[row]
+				contentWidth := colWidth - taskOverhead
+				if contentWidth < 4 {
+					contentWidth = 4
+				}
+				cell := fmt.Sprintf("%s %-*s", priorityMark(t.Priority), contentWidth, truncate(t.Content, contentWidth))
+				fmt.Printf("%-*s", colWidth, cell)
+			} else {
+				fmt.Printf("%-*s", colWidth, "")
+			}
+		}
+		fmt.Println()
+	}
+}
+
 func init() {
 	lsCmd.Flags().StringVar(&lsDone, "done", "", "show completed tasks: today, week, month, year, Nd/Nw/Nm")
 	lsCmd.Flags().StringArrayVarP(&lsLabels, "label", "l", nil, "filter by label (repeatable, AND logic)")
+	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(lsCmd)
