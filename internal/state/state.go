@@ -55,11 +55,15 @@ func Clear() error {
 }
 
 func statePath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".local", "share")
 	}
-	dir := filepath.Join(home, ".todoist-cli")
+	dir := filepath.Join(base, "todoist-cli")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
