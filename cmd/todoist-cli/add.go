@@ -16,6 +16,7 @@ var (
 	addProject     string
 	addLabels      []string
 	addDescription string
+	addDue         string
 )
 
 var addCmd = &cobra.Command{
@@ -39,13 +40,21 @@ var addCmd = &cobra.Command{
 		}
 		client := todoist.New(token)
 
-		req := todoist.CreateTaskRequest{Content: content, Description: addDescription}
+		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue}
 		if addProject != "" {
 			id, err := tasks.ProjectByName(ctx, conn, addProject)
 			if err != nil {
 				return err
 			}
 			req.ProjectID = id
+		} else {
+			st, err := loadContext(ctx, conn)
+			if err != nil {
+				return err
+			}
+			if st.HasProject() {
+				req.ProjectID = st.ProjectID
+			}
 		}
 		if len(addLabels) > 0 {
 			req.Labels = addLabels
@@ -113,6 +122,7 @@ func init() {
 	addCmd.Flags().StringVarP(&addProject, "project", "p", "", "project name")
 	addCmd.Flags().StringArrayVarP(&addLabels, "label", "l", nil, "label name (repeatable: -l <name> -l <name>)")
 	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
+	addCmd.Flags().StringVarP(&addDue, "due", "D", "", "due date in natural language (e.g. \"tomorrow\", \"every monday\")")
 	addCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	addCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(addCmd)
