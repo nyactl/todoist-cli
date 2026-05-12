@@ -2,55 +2,66 @@
 
 A fast, minimal Todoist CLI with a local SQLite cache. Designed for keyboard-driven workflows.
 
+> **Unofficial tool** — not affiliated with or endorsed by [Doist](https://doist.com).
+
 ## Install
 
+**Via `go install`:**
+
 ```sh
-git clone <repo-url>
+go install github.com/kenjikokubo/todoist-cli/cmd/todoist-cli@latest
+```
+
+**From source:**
+
+```sh
+git clone https://github.com/kenjikokubo/todoist-cli
 cd todoist-cli
-go build -o ~/.local/bin/todoist-cli ./cmd/todoist-cli
+make install   # installs to ~/.local/bin/todoist-cli
 ```
 
-Or with Make:
-
-```sh
-make install
-```
+Add `~/.local/bin` to your `$PATH` if needed.
 
 ## Auth
 
 ```sh
-todoist-cli auth login    # save API token to system keychain, then syncs automatically
-todoist-cli auth logout   # remove token
-todoist-cli auth status   # verify token
+td auth login    # prompts for API token, stores it in system keychain
+td auth logout   # remove token
+td auth status   # verify stored token
 ```
 
 Get your token from **Todoist → Settings → Integrations → Developer → API token**.
+
+Your token is stored in the macOS Keychain and never written to disk.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `sync` | Pull all tasks, projects, labels, sections into local cache |
-| `ls` | List today's and overdue tasks (or all tasks in active project) |
+| `sync` | Pull tasks, projects, labels, sections into local cache |
+| `ls` | List today's and overdue tasks; or all tasks in active project grouped by section |
+| `ls -b` | Board view — sections as side-by-side columns |
 | `ls --done [period]` | List completed tasks (live API call) |
 | `ls -l <label>` | Filter by label (repeatable, AND logic) |
-| `add <content>` | Create a task |
-| `done <id>` | Mark a task complete |
-| `open <id>` | Reopen a completed task |
-| `show <id>` | Show full task details, subtasks, and comments |
+| `add <content>` | Create a task in the active project |
+| `add -D <due>` | Natural language due date — e.g. `"tomorrow"`, `"every monday"` |
+| `add -p <project>` | Override project |
+| `add -l <label>` | Attach label (repeatable) |
+| `done <task>` | Mark a task complete |
+| `show <task>` | Show full task details, subtasks, and comments |
+| `mv <task> <section>` | Move task to a different section (kanban column) |
+| `rm <task>` | Delete a task |
 | `cd <project>` | Set active project context |
 | `cd` | Clear project context |
-| `context` | Print active project (`id<TAB>name`), empty if none |
-| `projects` | List all projects (`id<TAB>name`) |
-| `labels` | List all labels (`id<TAB>name`) |
+| `context` | Print active project, empty if none |
+| `projects` | List all projects |
+| `labels` | List all labels |
+
+All commands that take a `<task>` argument support tab completion by task name.
 
 ### Periods for `--done`
 
 `today`, `week`, `month`, `year`, `Nd`, `Nw`, `Nm` — e.g. `7d`, `2w`, `3m`
-
-### ID prefix resolution
-
-All commands that take an `<id>` accept a 4-character prefix. The local cache is queried first; a `sync` is needed if the task is not cached yet.
 
 ## Shell integration
 
@@ -75,7 +86,7 @@ todoist-cli completion fish | source
 
 ### Prompt integration
 
-`todoist-cli context` outputs `id<TAB>name` when a project is active, nothing otherwise. Always exits 0. Reads only `~/.todoist-cli/state.json` — no DB, sub-millisecond.
+`td context` outputs `id<TAB>name` when a project is active, nothing otherwise. Always exits 0.
 
 **Starship** (`~/.config/starship.toml`):
 ```toml
@@ -97,8 +108,6 @@ RPROMPT='$(_todoist_context)'"$RPROMPT"
 
 ### Auto-sync on shell start (optional)
 
-Keeps the cache fresh without blocking your shell:
-
 ```sh
 # ~/.zshrc
 _todoist_bg_sync() {
@@ -109,9 +118,13 @@ add-zsh-hook precmd _todoist_bg_sync
 
 ## Data
 
-All data is stored in `~/.todoist-cli/`:
+All data is stored in `~/.local/share/todoist-cli/` (XDG-compliant, override with `$XDG_DATA_HOME`):
 
-- `todoist-cli.db` — SQLite cache (projects, tasks, labels, sections)
+- `todoist-cli.db` — SQLite cache (tasks, projects, labels, sections)
 - `state.json` — active project context
 
-The database is a read-through cache; `sync` rebuilds it from the API. Deleting the directory and re-running `sync` is always safe.
+The database is a read-through cache. Deleting the directory and running `td sync` is always safe — nothing is lost.
+
+## Support
+
+If this tool saves you time, you can [buy me a coffee](https://buymeacoffee.com) ☕
