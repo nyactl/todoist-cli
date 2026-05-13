@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/db"
 
 	"github.com/spf13/cobra"
 )

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"todoist-cli/internal/config"
-	"todoist-cli/internal/db"
-	"todoist-cli/internal/tasks"
-	"todoist-cli/internal/todoist"
+	"github.com/nyactl/todoist-cli/internal/config"
+	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/tasks"
+	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
