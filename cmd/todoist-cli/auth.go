@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"todoist-cli/internal/config"
-	"todoist-cli/internal/todoist"
+	"github.com/nyactl/todoist-cli/internal/config"
+	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
