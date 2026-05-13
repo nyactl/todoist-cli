@@ -148,4 +148,6 @@ The database is a read-through cache. Deleting the directory and running `td syn
 
 ## Support
 
-If this tool saves you time, you can [buy me a coffee](https://buymeacoffee.com) ☕
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/nyactl?style=flat&logo=github&label=Sponsor)](https://github.com/sponsors/nyactl)
+
+If this tool saves you time, consider sponsoring — it helps keep the project maintained.
