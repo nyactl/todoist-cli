@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/zalando/go-keyring"
@@ -17,9 +18,12 @@ func SetToken(token string) error {
 }
 
 func GetToken() (string, error) {
+	if token := os.Getenv("TODOIST_TOKEN"); token != "" {
+		return token, nil
+	}
 	token, err := keyring.Get(keyringService, keyringUser)
 	if err != nil {
-		return "", fmt.Errorf("no token found — run: todoist-cli auth login")
+		return "", fmt.Errorf("no token found — run: todoist-cli auth login (or set TODOIST_TOKEN)")
 	}
 	return token, nil
 }

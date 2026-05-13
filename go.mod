@@ -1,4 +1,4 @@
-module todoist-cli
+module github.com/nyactl/todoist-cli
 
 go 1.26.2
 

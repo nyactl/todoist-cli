@@ -9,13 +9,13 @@ A fast, minimal Todoist CLI with a local SQLite cache. Designed for keyboard-dri
 **Via `go install`:**
 
 ```sh
-go install github.com/kenjikokubo/todoist-cli/cmd/todoist-cli@latest
+go install github.com/nyactl/todoist-cli/cmd/todoist-cli@latest
 ```
 
 **From source:**
 
 ```sh
-git clone https://github.com/kenjikokubo/todoist-cli
+git clone https://github.com/nyactl/todoist-cli
 cd todoist-cli
 make install   # installs to ~/.local/bin/todoist-cli
 ```
@@ -32,7 +32,19 @@ td auth status   # verify stored token
 
 Get your token from **Todoist → Settings → Integrations → Developer → API token**.
 
-Your token is stored in the macOS Keychain and never written to disk.
+Tokens are stored in the system keychain — never written to disk:
+
+| Platform | Storage |
+|----------|---------|
+| macOS | Keychain |
+| Linux | Secret Service (GNOME Keyring / KWallet) |
+| Windows | Credential Manager |
+
+**Headless / WSL / CI** — set `TODOIST_TOKEN` in your environment instead:
+
+```sh
+export TODOIST_TOKEN=your_token_here
+```
 
 ## Commands
 
@@ -71,17 +83,26 @@ All commands that take a `<task>` argument support tab completion by task name.
 alias td='todoist-cli'
 ```
 
-### Zsh completion
+### Shell completion
 
+**Zsh** (`~/.zshrc`):
 ```sh
-# ~/.zshrc
 source <(todoist-cli completion zsh)
 ```
 
-### Fish completion
+**Bash** (`~/.bashrc`):
+```sh
+source <(todoist-cli completion bash)
+```
 
+**Fish** (`~/.config/fish/config.fish`):
 ```sh
 todoist-cli completion fish | source
+```
+
+Or persist fish completions:
+```sh
+todoist-cli completion fish > ~/.config/fish/completions/todoist-cli.fish
 ```
 
 ### Prompt integration
