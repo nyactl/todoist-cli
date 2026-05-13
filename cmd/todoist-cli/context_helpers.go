@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"todoist-cli/internal/state"
-	"todoist-cli/internal/tasks"
+	"github.com/nyactl/todoist-cli/internal/state"
+	"github.com/nyactl/todoist-cli/internal/tasks"
 )
 
 // loadContext reads the active project context and validates it against the

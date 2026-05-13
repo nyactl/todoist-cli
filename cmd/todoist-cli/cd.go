@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"todoist-cli/internal/db"
-	"todoist-cli/internal/state"
-	"todoist-cli/internal/tasks"
+	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/state"
+	"github.com/nyactl/todoist-cli/internal/tasks"
 
 	"github.com/spf13/cobra"
 )
