@@ -14,6 +14,7 @@ import (
 
 var (
 	addProject     string
+	addSection     string
 	addLabels      []string
 	addDescription string
 	addDue         string
@@ -56,6 +57,16 @@ var addCmd = &cobra.Command{
 				req.ProjectID = st.ProjectID
 			}
 		}
+		if addSection != "" {
+			if req.ProjectID == "" {
+				return fmt.Errorf("--section requires a project context — run: td cd <project> or use --project")
+			}
+			sectionID, err := tasks.SectionByName(ctx, conn, addSection, req.ProjectID)
+			if err != nil {
+				return err
+			}
+			req.SectionID = sectionID
+		}
 		if len(addLabels) > 0 {
 			req.Labels = addLabels
 		}
@@ -70,6 +81,45 @@ var addCmd = &cobra.Command{
 		fmt.Println(task.ID)
 		return nil
 	},
+}
+
+func addSectionCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	conn, err := db.Open()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer conn.Close()
+	ctx := cmd.Context()
+
+	var projectID string
+	if p, err := cmd.Flags().GetString("project"); err == nil && p != "" {
+		if id, err := tasks.ProjectByName(ctx, conn, p); err == nil {
+			projectID = id
+		}
+	}
+	if projectID == "" {
+		if st, _ := loadContext(ctx, conn); st.HasProject() {
+			projectID = st.ProjectID
+		}
+	}
+	if projectID == "" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	rows, err := conn.QueryContext(ctx,
+		`SELECT name FROM sections WHERE project_id = ? AND is_archived = 0 ORDER BY ord`, projectID)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		out = append(out, name)
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 func projectCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -120,10 +170,12 @@ func labelCompleter(cmd *cobra.Command, args []string, toComplete string) ([]str
 
 func init() {
 	addCmd.Flags().StringVarP(&addProject, "project", "p", "", "project name")
+	addCmd.Flags().StringVarP(&addSection, "section", "s", "", "section name (requires project context)")
 	addCmd.Flags().StringArrayVarP(&addLabels, "label", "l", nil, "label name (repeatable: -l <name> -l <name>)")
 	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
 	addCmd.Flags().StringVarP(&addDue, "due", "D", "", "due date in natural language (e.g. \"tomorrow\", \"every monday\")")
 	addCmd.RegisterFlagCompletionFunc("project", projectCompleter)
+	addCmd.RegisterFlagCompletionFunc("section", addSectionCompleter)
 	addCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(addCmd)
 }
