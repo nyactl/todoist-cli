@@ -22,8 +22,11 @@ func Open() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	return OpenAt(filepath.Join(dir, "todoist-cli.db"))
+}
 
-	db, err := sql.Open("sqlite", filepath.Join(dir, "todoist-cli.db"))
+func OpenAt(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
