@@ -8,10 +8,18 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
 
-const baseURL = "https://api.todoist.com/api/v1"
+const defaultBaseURL = "https://api.todoist.com/api/v1"
+
+func apiBaseURL() string {
+	if base := os.Getenv("TODOIST_API_BASE"); base != "" {
+		return base
+	}
+	return defaultBaseURL
+}
 
 type Client struct {
 	token string
@@ -43,7 +51,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (*http.R
 		}
 		r = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, r)
+	req, err := http.NewRequestWithContext(ctx, method, apiBaseURL()+path, r)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +84,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 }
 
 func (c *Client) doQuery(ctx context.Context, path string, params url.Values, out any) error {
-	full := baseURL + path
+	full := apiBaseURL() + path
 	if len(params) > 0 {
 		full += "?" + params.Encode()
 	}
