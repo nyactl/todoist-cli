@@ -68,6 +68,7 @@ export TODOIST_TOKEN=your_token_here
 | `context` | Print active project, empty if none |
 | `projects` | List all projects |
 | `labels` | List all labels |
+| `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
 
 All commands that take a `<task>` argument support tab completion by task name.
 
