@@ -67,6 +67,7 @@ export TODOIST_TOKEN=your_token_here
 | `cd` | Clear project context |
 | `context` | Print active project, empty if none |
 | `projects` | List all projects |
+| `sections` | List sections in the active project |
 | `labels` | List all labels |
 | `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
 
