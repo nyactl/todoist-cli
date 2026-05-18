@@ -13,6 +13,8 @@ import (
 
 	"github.com/nyactl/todoist-cli/internal/db"
 	"github.com/nyactl/todoist-cli/internal/todoist"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // testEnv holds an isolated DB + optional stub HTTP server for one test.
@@ -44,20 +46,28 @@ func newTestEnv(t *testing.T, handler http.Handler) *testEnv {
 	return &testEnv{conn: conn, srv: srv}
 }
 
+// resetFlags resets every flag on every command to its default value and clears
+// the Changed tracking. Without this, pflag state bleeds between Execute() calls.
+func resetFlags(cmd *cobra.Command) {
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		f.Changed = false
+		f.Value.Set(f.DefValue)
+	})
+	for _, sub := range cmd.Commands() {
+		resetFlags(sub)
+	}
+}
+
 // runCmd executes the CLI with the given args and returns captured stdout.
 // Flag state is reset before each call so tests don't bleed into each other.
 func runCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 
-	// Reset all package-level flag vars to their defaults.
-	lsBoard = false
-	lsDone = ""
+	resetFlags(root)
+	// StringArray flags append on each Set call — pflag can't reset them via DefValue.
 	lsLabels = nil
-	addProject = ""
-	addSection = ""
 	addLabels = nil
-	addDescription = ""
-	addDue = ""
+	editLabels = nil
 
 	// Capture os.Stdout — most print helpers write directly to it.
 	r, w, err := os.Pipe()

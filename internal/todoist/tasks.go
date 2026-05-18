@@ -65,3 +65,21 @@ func (c *Client) MoveTaskToSection(ctx context.Context, taskID, sectionID string
 	resp.Body.Close()
 	return nil
 }
+
+func (c *Client) MoveTaskToProject(ctx context.Context, taskID, projectID string) error {
+	body := map[string]string{"project_id": projectID}
+	resp, err := c.do(ctx, "POST", "/tasks/"+taskID+"/move", body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// UpdateTaskFields updates only the fields present in the map.
+// Use this instead of UpdateTask when you need to send an explicit empty string
+// (e.g. due_string: "" to clear a due date), which omitempty would otherwise drop.
+func (c *Client) UpdateTaskFields(ctx context.Context, id string, fields map[string]any) (*Task, error) {
+	var t Task
+	return &t, c.doJSON(ctx, "POST", "/tasks/"+id, fields, &t)
+}
