@@ -48,6 +48,8 @@ export TODOIST_TOKEN=your_token_here
 
 ## Commands
 
+`<task>` accepts a task ID, ID prefix, or exact task name — all commands resolve the same way. Tab completion completes by name.
+
 | Command | Description |
 |---------|-------------|
 | `sync` | Pull tasks, projects, labels, sections into local cache |
@@ -71,8 +73,6 @@ export TODOIST_TOKEN=your_token_here
 | `sections` | List sections in the active project |
 | `labels` | List all labels |
 | `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
-
-All commands that take a `<task>` argument support tab completion by task name.
 
 ### Periods for `--done`
 
