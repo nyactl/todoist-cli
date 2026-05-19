@@ -4,13 +4,15 @@ import (
 	"fmt"
 
 	"github.com/atotto/clipboard"
-	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
 	"github.com/nyactl/todoist-cli/internal/tasks"
-	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
+
+func taskURL(id string) string {
+	return "https://app.todoist.com/app/task/" + id
+}
 
 var cpCmd = &cobra.Command{
 	Use:               "cp <task>",
@@ -31,28 +33,13 @@ var cpCmd = &cobra.Command{
 			return err
 		}
 
-		taskURL := task.URL
-		if taskURL == "" {
-			// URL missing from cache — fetch live from API
-			token, err := config.GetToken()
-			if err != nil {
-				return fmt.Errorf("task has no URL in local cache: %w", err)
-			}
-			live, err := todoist.New(token).GetTask(ctx, task.ID)
-			if err != nil {
-				return fmt.Errorf("task has no URL in local cache and live fetch failed: %w", err)
-			}
-			taskURL = live.URL
-			if taskURL == "" {
-				return fmt.Errorf("task has no URL")
-			}
-		}
+		url := taskURL(task.ID)
 
-		if err := clipboard.WriteAll(taskURL); err != nil {
+		if err := clipboard.WriteAll(url); err != nil {
 			return fmt.Errorf("clipboard: %w", err)
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "copied  %s\n", taskURL)
+		fmt.Fprintf(cmd.OutOrStdout(), "copied  %s\n", url)
 		return nil
 	},
 }
