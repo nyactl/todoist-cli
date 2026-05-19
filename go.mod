@@ -3,6 +3,7 @@ module github.com/nyactl/todoist-cli
 go 1.26.2
 
 require (
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect

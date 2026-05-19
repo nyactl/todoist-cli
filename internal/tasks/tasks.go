@@ -18,6 +18,7 @@ type Task struct {
 	Order       int
 	DueDate     string
 	DueDatetime string
+	URL         string
 }
 
 const selectCols = `
@@ -25,7 +26,8 @@ const selectCols = `
 	       COALESCE(t.project_id, ''), COALESCE(p.name, ''),
 	       COALESCE(t.section_id, ''), COALESCE(s.name, ''),
 	       t.priority, t.ord,
-	       COALESCE(t.due_date, ''), COALESCE(t.due_datetime, '')
+	       COALESCE(t.due_date, ''), COALESCE(t.due_datetime, ''),
+	       COALESCE(t.url, '')
 	FROM tasks t
 	LEFT JOIN projects p ON t.project_id = p.id
 	LEFT JOIN sections s ON t.section_id = s.id`
@@ -179,6 +181,7 @@ func query(ctx context.Context, q *sql.DB, sql string, args ...any) ([]Task, err
 			&t.SectionID, &t.SectionName,
 			&t.Priority, &t.Order,
 			&t.DueDate, &t.DueDatetime,
+			&t.URL,
 		); err != nil {
 			return nil, err
 		}

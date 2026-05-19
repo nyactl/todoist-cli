@@ -11,7 +11,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/atotto/clipboard"
 	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -155,4 +157,15 @@ func emptyAPI() http.Handler {
 // noopAPI returns 204 No Content for any request — useful for close/delete/move.
 func noopHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// clipboardAvailable reports whether a clipboard is accessible in this environment.
+func clipboardAvailable() bool {
+	return !clipboard.Unsupported
+}
+
+// taskByIDForTest is a test helper to look up a task directly from the DB.
+func taskByIDForTest(t *testing.T, env *testEnv, id string) (*tasks.Task, error) {
+	t.Helper()
+	return tasks.ByID(context.Background(), env.conn, id)
 }
