@@ -99,8 +99,20 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	if len(ts) > 1 {
 		return nil, fmt.Errorf("prefix %q is ambiguous (%d matches) — use more characters", idOrPrefix, len(ts))
 	}
-	// fall back to case-insensitive content match
+	// case-insensitive exact content match
 	ts, err = query(ctx, db, selectCols+` WHERE lower(t.content) = lower(?)`, idOrPrefix)
+	if err != nil {
+		return nil, err
+	}
+	if len(ts) == 1 {
+		return &ts[0], nil
+	}
+	if len(ts) > 1 {
+		return nil, fmt.Errorf("task content %q is ambiguous (%d matches) — use an ID instead", idOrPrefix, len(ts))
+	}
+
+	// case-insensitive substring match as final fallback
+	ts, err = query(ctx, db, selectCols+` WHERE lower(t.content) LIKE lower(?)`, "%"+idOrPrefix+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +122,7 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	case 1:
 		return &ts[0], nil
 	default:
-		return nil, fmt.Errorf("task content %q is ambiguous (%d matches) — use an ID instead", idOrPrefix, len(ts))
+		return nil, fmt.Errorf("task %q is ambiguous (%d matches) — use more specific text or an ID", idOrPrefix, len(ts))
 	}
 }
 
