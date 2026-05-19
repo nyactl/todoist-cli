@@ -68,6 +68,8 @@ export TODOIST_TOKEN=your_token_here
 | `mv <task> <section>` | Move task to a different section (kanban column) |
 | `rm <task>` | Delete a task |
 | `cp <task>` | Copy task URL to clipboard |
+| `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
+| `pick -l <label>` | Pick from label-filtered tasks |
 | `cd <project>` | Set active project context |
 | `cd` | Clear project context |
 | `context` | Print active project, empty if none |
@@ -81,6 +83,18 @@ export TODOIST_TOKEN=your_token_here
 `today`, `week`, `month`, `year`, `Nd`, `Nw`, `Nm` — e.g. `7d`, `2w`, `3m`
 
 ## Shell integration
+
+### Composing with `pick`
+
+`td pick` fuzzy-finds a task and prints its ID — compose it with any command that accepts `<task>`:
+
+```sh
+td done $(td pick)              # complete a task
+td show $(td pick)              # show details
+td cp $(td pick)                # copy URL
+td edit $(td pick) -D tomorrow  # reschedule
+td pick -l urgent               # pick from urgent tasks only
+```
 
 ### Alias
 
