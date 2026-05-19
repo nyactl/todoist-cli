@@ -10,10 +10,13 @@ import (
 
 	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
+
+var syncProject string
 
 var syncCmd = &cobra.Command{
 	Use:               "sync",
@@ -33,59 +36,183 @@ var syncCmd = &cobra.Command{
 		ctx := cmd.Context()
 		client := todoist.New(token)
 
-		// Fetch all resource types concurrently — each is independent.
-		type fetchResult struct {
-			labels   []todoist.Label
-			projects []todoist.Project
-			sections []todoist.Section
-			tasks    []todoist.Task
+		if syncProject != "" {
+			return runProjectSync(cmd, ctx, conn, client, syncProject)
 		}
-		var (
-			fetched fetchResult
-			mu      sync.Mutex
-			wg      sync.WaitGroup
-			fetchErr error
-		)
-		setErr := func(err error) {
-			mu.Lock()
-			if fetchErr == nil {
-				fetchErr = err
-			}
-			mu.Unlock()
-		}
-		wg.Add(4)
-		go func() { defer wg.Done(); items, err := client.GetLabels(ctx); if err != nil { setErr(fmt.Errorf("labels: %w", err)); return }; mu.Lock(); fetched.labels = items; mu.Unlock() }()
-		go func() { defer wg.Done(); items, err := client.GetProjects(ctx); if err != nil { setErr(fmt.Errorf("projects: %w", err)); return }; mu.Lock(); fetched.projects = items; mu.Unlock() }()
-		go func() { defer wg.Done(); items, err := client.GetSections(ctx); if err != nil { setErr(fmt.Errorf("sections: %w", err)); return }; mu.Lock(); fetched.sections = items; mu.Unlock() }()
-		go func() { defer wg.Done(); items, err := client.GetTasks(ctx, ""); if err != nil { setErr(fmt.Errorf("tasks: %w", err)); return }; mu.Lock(); fetched.tasks = items; mu.Unlock() }()
-		wg.Wait()
-		if fetchErr != nil {
-			return fmt.Errorf("sync fetch: %w", fetchErr)
-		}
-
-		type step struct {
-			name string
-			fn   func(context.Context, *sql.DB) (int, error)
-		}
-		for _, s := range []step{
-			{"labels", func(ctx context.Context, db *sql.DB) (int, error) { return writeLabels(ctx, db, fetched.labels) }},
-			{"projects", func(ctx context.Context, db *sql.DB) (int, error) { return writeProjects(ctx, db, fetched.projects) }},
-			{"sections", func(ctx context.Context, db *sql.DB) (int, error) { return writeSections(ctx, db, fetched.sections) }},
-			{"tasks", func(ctx context.Context, db *sql.DB) (int, error) { return writeTasks(ctx, db, fetched.tasks) }},
-		} {
-			n, err := s.fn(ctx, conn)
-			if err != nil {
-				return fmt.Errorf("sync %s: %w", s.name, err)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "  %-10s %d\n", s.name, n)
-		}
-
-		_, err = conn.ExecContext(ctx,
-			`INSERT INTO sync_state(key,value) VALUES('last_synced_at',?)
-			 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-			time.Now().UTC().Format(time.RFC3339))
-		return err
+		return runFullSync(cmd, ctx, conn, client)
 	},
+}
+
+func runFullSync(cmd *cobra.Command, ctx context.Context, conn *sql.DB, client *todoist.Client) error {
+	type fetchResult struct {
+		labels   []todoist.Label
+		projects []todoist.Project
+		sections []todoist.Section
+		tasks    []todoist.Task
+	}
+	var (
+		fetched  fetchResult
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		fetchErr error
+	)
+	setErr := func(err error) {
+		mu.Lock()
+		if fetchErr == nil {
+			fetchErr = err
+		}
+		mu.Unlock()
+	}
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		items, err := client.GetLabels(ctx)
+		if err != nil {
+			setErr(fmt.Errorf("labels: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.labels = items
+		mu.Unlock()
+	}()
+	go func() {
+		defer wg.Done()
+		items, err := client.GetProjects(ctx)
+		if err != nil {
+			setErr(fmt.Errorf("projects: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.projects = items
+		mu.Unlock()
+	}()
+	go func() {
+		defer wg.Done()
+		items, err := client.GetSections(ctx, "")
+		if err != nil {
+			setErr(fmt.Errorf("sections: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.sections = items
+		mu.Unlock()
+	}()
+	go func() {
+		defer wg.Done()
+		items, err := client.GetTasks(ctx, "")
+		if err != nil {
+			setErr(fmt.Errorf("tasks: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.tasks = items
+		mu.Unlock()
+	}()
+	wg.Wait()
+	if fetchErr != nil {
+		return fmt.Errorf("sync fetch: %w", fetchErr)
+	}
+
+	type step struct {
+		name string
+		fn   func(context.Context, *sql.DB) (int, error)
+	}
+	for _, s := range []step{
+		{"labels", func(ctx context.Context, db *sql.DB) (int, error) { return writeLabels(ctx, db, fetched.labels) }},
+		{"projects", func(ctx context.Context, db *sql.DB) (int, error) { return writeProjects(ctx, db, fetched.projects) }},
+		{"sections", func(ctx context.Context, db *sql.DB) (int, error) { return writeSections(ctx, db, fetched.sections, "") }},
+		{"tasks", func(ctx context.Context, db *sql.DB) (int, error) { return writeTasks(ctx, db, fetched.tasks, "") }},
+	} {
+		n, err := s.fn(ctx, conn)
+		if err != nil {
+			return fmt.Errorf("sync %s: %w", s.name, err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %-10s %d\n", s.name, n)
+	}
+
+	_, err := conn.ExecContext(ctx,
+		`INSERT INTO sync_state(key,value) VALUES('last_synced_at',?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func runProjectSync(cmd *cobra.Command, ctx context.Context, conn *sql.DB, client *todoist.Client, project string) error {
+	// Resolve project name or ID to a confirmed project ID.
+	projectID, err := tasks.ProjectByName(ctx, conn, project)
+	if err != nil {
+		// Try treating the input as a raw ID.
+		ok, err2 := tasks.ProjectExists(ctx, conn, project)
+		if err2 != nil || !ok {
+			return fmt.Errorf("project %q not found in local cache — run: todoist-cli sync", project)
+		}
+		projectID = project
+	}
+
+	type fetchResult struct {
+		sections []todoist.Section
+		tasks    []todoist.Task
+	}
+	var (
+		fetched  fetchResult
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		fetchErr error
+	)
+	setErr := func(err error) {
+		mu.Lock()
+		if fetchErr == nil {
+			fetchErr = err
+		}
+		mu.Unlock()
+	}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		items, err := client.GetSections(ctx, projectID)
+		if err != nil {
+			setErr(fmt.Errorf("sections: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.sections = items
+		mu.Unlock()
+	}()
+	go func() {
+		defer wg.Done()
+		items, err := client.GetTasks(ctx, projectID)
+		if err != nil {
+			setErr(fmt.Errorf("tasks: %w", err))
+			return
+		}
+		mu.Lock()
+		fetched.tasks = items
+		mu.Unlock()
+	}()
+	wg.Wait()
+	if fetchErr != nil {
+		return fmt.Errorf("sync fetch: %w", fetchErr)
+	}
+
+	type step struct {
+		name string
+		fn   func(context.Context, *sql.DB) (int, error)
+	}
+	for _, s := range []step{
+		{"sections", func(ctx context.Context, db *sql.DB) (int, error) {
+			return writeSections(ctx, db, fetched.sections, projectID)
+		}},
+		{"tasks", func(ctx context.Context, db *sql.DB) (int, error) {
+			return writeTasks(ctx, db, fetched.tasks, projectID)
+		}},
+	} {
+		n, err := s.fn(ctx, conn)
+		if err != nil {
+			return fmt.Errorf("sync %s: %w", s.name, err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %-10s %d\n", s.name, n)
+	}
+	return nil
 }
 
 func writeLabels(ctx context.Context, db *sql.DB, items []todoist.Label) (int, error) {
@@ -131,12 +258,33 @@ func writeProjects(ctx context.Context, db *sql.DB, items []todoist.Project) (in
 	return len(items), tx.Commit()
 }
 
-func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section) (int, error) {
+func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section, projectID string) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
+
+	if projectID != "" {
+		ids := make([]any, 0, len(items)+1)
+		ids = append(ids, projectID)
+		placeholders := make([]string, len(items))
+		for i, s := range items {
+			ids = append(ids, s.ID)
+			placeholders[i] = "?"
+		}
+		if len(items) > 0 {
+			_, err = tx.ExecContext(ctx,
+				`DELETE FROM sections WHERE project_id = ? AND id NOT IN (`+strings.Join(placeholders, ",")+`)`,
+				ids...)
+		} else {
+			_, err = tx.ExecContext(ctx, `DELETE FROM sections WHERE project_id = ?`, projectID)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("purge sections: %w", err)
+		}
+	}
+
 	for i, s := range items {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO sections(id,name,project_id,ord,is_archived) VALUES(?,?,?,?,?)
@@ -151,7 +299,7 @@ func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section) (in
 	return len(items), tx.Commit()
 }
 
-func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task) (int, error) {
+func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID string) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -162,16 +310,33 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task) (int, err
 	for i, t := range items {
 		ids[i] = t.ID
 	}
-	if len(ids) > 0 {
-		placeholders := strings.Repeat("?,", len(ids))
-		placeholders = placeholders[:len(placeholders)-1]
-		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM tasks WHERE id NOT IN (`+placeholders+`)`, ids...); err != nil {
-			return 0, fmt.Errorf("purge deleted tasks: %w", err)
+	if projectID != "" {
+		// Scoped delete: only remove tasks in this project that are no longer returned.
+		if len(ids) > 0 {
+			placeholders := strings.Repeat("?,", len(ids))
+			placeholders = placeholders[:len(placeholders)-1]
+			scopedIDs := append([]any{projectID}, ids...)
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM tasks WHERE project_id = ? AND id NOT IN (`+placeholders+`)`, scopedIDs...); err != nil {
+				return 0, fmt.Errorf("purge deleted tasks: %w", err)
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE project_id = ?`, projectID); err != nil {
+				return 0, fmt.Errorf("purge all project tasks: %w", err)
+			}
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
-			return 0, fmt.Errorf("purge all tasks: %w", err)
+		if len(ids) > 0 {
+			placeholders := strings.Repeat("?,", len(ids))
+			placeholders = placeholders[:len(placeholders)-1]
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM tasks WHERE id NOT IN (`+placeholders+`)`, ids...); err != nil {
+				return 0, fmt.Errorf("purge deleted tasks: %w", err)
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
+				return 0, fmt.Errorf("purge all tasks: %w", err)
+			}
 		}
 	}
 	for _, t := range items {
@@ -286,5 +451,6 @@ func boolToInt(b bool) int {
 }
 
 func init() {
+	syncCmd.Flags().StringVarP(&syncProject, "project", "p", "", "sync only this project (name or ID)")
 	root.AddCommand(syncCmd)
 }

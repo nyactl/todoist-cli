@@ -53,6 +53,7 @@ export TODOIST_TOKEN=your_token_here
 | Command | Description |
 |---------|-------------|
 | `sync` | Pull tasks, projects, labels, sections into local cache |
+| `sync -p <project>` | Sync only one project (faster targeted sync) |
 | `ls` | List today's and overdue tasks; or all tasks in active project grouped by section |
 | `ls -b` | Board view — sections as side-by-side columns |
 | `ls --done [period]` | List completed tasks (live API call) |
