@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nyactl/todoist-cli/internal/config"
@@ -32,17 +33,47 @@ var syncCmd = &cobra.Command{
 		ctx := cmd.Context()
 		client := todoist.New(token)
 
+		// Fetch all resource types concurrently — each is independent.
+		type fetchResult struct {
+			labels   []todoist.Label
+			projects []todoist.Project
+			sections []todoist.Section
+			tasks    []todoist.Task
+		}
+		var (
+			fetched fetchResult
+			mu      sync.Mutex
+			wg      sync.WaitGroup
+			fetchErr error
+		)
+		setErr := func(err error) {
+			mu.Lock()
+			if fetchErr == nil {
+				fetchErr = err
+			}
+			mu.Unlock()
+		}
+		wg.Add(4)
+		go func() { defer wg.Done(); items, err := client.GetLabels(ctx); if err != nil { setErr(fmt.Errorf("labels: %w", err)); return }; mu.Lock(); fetched.labels = items; mu.Unlock() }()
+		go func() { defer wg.Done(); items, err := client.GetProjects(ctx); if err != nil { setErr(fmt.Errorf("projects: %w", err)); return }; mu.Lock(); fetched.projects = items; mu.Unlock() }()
+		go func() { defer wg.Done(); items, err := client.GetSections(ctx); if err != nil { setErr(fmt.Errorf("sections: %w", err)); return }; mu.Lock(); fetched.sections = items; mu.Unlock() }()
+		go func() { defer wg.Done(); items, err := client.GetTasks(ctx, ""); if err != nil { setErr(fmt.Errorf("tasks: %w", err)); return }; mu.Lock(); fetched.tasks = items; mu.Unlock() }()
+		wg.Wait()
+		if fetchErr != nil {
+			return fmt.Errorf("sync fetch: %w", fetchErr)
+		}
+
 		type step struct {
 			name string
-			fn   func(context.Context, *sql.DB, *todoist.Client) (int, error)
+			fn   func(context.Context, *sql.DB) (int, error)
 		}
 		for _, s := range []step{
-			{"labels", syncLabels},
-			{"projects", syncProjects},
-			{"sections", syncSections},
-			{"tasks", syncTasks},
+			{"labels", func(ctx context.Context, db *sql.DB) (int, error) { return writeLabels(ctx, db, fetched.labels) }},
+			{"projects", func(ctx context.Context, db *sql.DB) (int, error) { return writeProjects(ctx, db, fetched.projects) }},
+			{"sections", func(ctx context.Context, db *sql.DB) (int, error) { return writeSections(ctx, db, fetched.sections) }},
+			{"tasks", func(ctx context.Context, db *sql.DB) (int, error) { return writeTasks(ctx, db, fetched.tasks) }},
 		} {
-			n, err := s.fn(ctx, conn, client)
+			n, err := s.fn(ctx, conn)
 			if err != nil {
 				return fmt.Errorf("sync %s: %w", s.name, err)
 			}
@@ -57,11 +88,7 @@ var syncCmd = &cobra.Command{
 	},
 }
 
-func syncLabels(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
-	items, err := client.GetLabels(ctx)
-	if err != nil {
-		return 0, err
-	}
+func writeLabels(ctx context.Context, db *sql.DB, items []todoist.Label) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -81,11 +108,7 @@ func syncLabels(ctx context.Context, db *sql.DB, client *todoist.Client) (int, e
 	return len(items), tx.Commit()
 }
 
-func syncProjects(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
-	items, err := client.GetProjects(ctx)
-	if err != nil {
-		return 0, err
-	}
+func writeProjects(ctx context.Context, db *sql.DB, items []todoist.Project) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -108,11 +131,7 @@ func syncProjects(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 	return len(items), tx.Commit()
 }
 
-func syncSections(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
-	items, err := client.GetSections(ctx)
-	if err != nil {
-		return 0, err
-	}
+func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -132,12 +151,7 @@ func syncSections(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 	return len(items), tx.Commit()
 }
 
-func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
-	items, err := client.GetTasks(ctx, "")
-	if err != nil {
-		return 0, err
-	}
-
+func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err

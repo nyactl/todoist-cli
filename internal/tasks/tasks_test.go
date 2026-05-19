@@ -226,6 +226,46 @@ func TestByID_ContentFallback(t *testing.T) {
 	}
 }
 
+func TestByID_SubstringMatch(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "xyz999", "Lampen kaufen", "p1", "")
+
+	task, err := tasks.ByID(context.Background(), conn, "Lampen")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.ID != "xyz999" {
+		t.Errorf("got id %q, want xyz999", task.ID)
+	}
+}
+
+func TestByID_SubstringMatch_CaseInsensitive(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "xyz999", "Lampen kaufen", "p1", "")
+
+	task, err := tasks.ByID(context.Background(), conn, "lampen")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.ID != "xyz999" {
+		t.Errorf("got id %q, want xyz999", task.ID)
+	}
+}
+
+func TestByID_SubstringMatch_Ambiguous(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "t1", "Buy milk today", "p1", "")
+	seedTask(t, conn, "t2", "Buy milk tomorrow", "p1", "")
+
+	_, err := tasks.ByID(context.Background(), conn, "Buy milk")
+	if err == nil {
+		t.Fatal("expected ambiguity error, got nil")
+	}
+}
+
 func TestByID_NotFound(t *testing.T) {
 	conn := openTestDB(t)
 
@@ -295,6 +335,76 @@ func TestSubtasks_ReturnsChildren(t *testing.T) {
 	}
 	if len(subs) != 2 {
 		t.Fatalf("expected 2 subtasks, got %d", len(subs))
+	}
+}
+
+// ProjectExists
+
+func TestProjectExists_True(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+
+	ok, err := tasks.ProjectExists(context.Background(), conn, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Error("expected true for existing project")
+	}
+}
+
+func TestProjectExists_False(t *testing.T) {
+	conn := openTestDB(t)
+
+	ok, err := tasks.ProjectExists(context.Background(), conn, "no-such-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Error("expected false for missing project")
+	}
+}
+
+// ByLabels edge cases
+
+func TestByLabels_EmptyResult(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "t1", "No labels", "p1", "")
+
+	ts, err := tasks.ByLabels(context.Background(), conn, []string{"urgent"}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 0 {
+		t.Fatalf("expected 0 tasks, got %d", len(ts))
+	}
+}
+
+func TestByLabels_RequiresAtLeastOneLabel(t *testing.T) {
+	conn := openTestDB(t)
+
+	_, err := tasks.ByLabels(context.Background(), conn, nil, "")
+	if err == nil {
+		t.Fatal("expected error for empty label list")
+	}
+}
+
+func TestByLabels_FilteredByProject(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedProject(t, conn, "p2", "Personal")
+	seedTask(t, conn, "t1", "Work task", "p1", "")
+	seedTask(t, conn, "t2", "Personal task", "p2", "")
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'urgent')`)
+
+	ts, err := tasks.ByLabels(context.Background(), conn, []string{"urgent"}, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 1 || ts[0].ID != "t1" {
+		t.Fatalf("expected only t1 in p1, got %v", ts)
 	}
 }
 
