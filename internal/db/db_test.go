@@ -72,3 +72,22 @@ func TestOpen_UsesXDGDataHome(t *testing.T) {
 		t.Fatalf("expected at least migration version 1, got %d", version)
 	}
 }
+
+func TestOpen_FallbackToHomeDir(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", t.TempDir())
+
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open without XDG_DATA_HOME: %v", err)
+	}
+	defer conn.Close()
+
+	var version int
+	if err := conn.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
+		t.Fatalf("schema_migrations query: %v", err)
+	}
+	if version < 1 {
+		t.Fatalf("expected migration version >= 1, got %d", version)
+	}
+}
