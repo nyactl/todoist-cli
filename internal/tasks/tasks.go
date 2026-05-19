@@ -99,8 +99,8 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	if len(ts) > 1 {
 		return nil, fmt.Errorf("prefix %q is ambiguous (%d matches) — use more characters", idOrPrefix, len(ts))
 	}
-	// fall back to exact content match (supports completion by task name)
-	ts, err = query(ctx, db, selectCols+` WHERE t.content = ?`, idOrPrefix)
+	// fall back to case-insensitive content match
+	ts, err = query(ctx, db, selectCols+` WHERE lower(t.content) = lower(?)`, idOrPrefix)
 	if err != nil {
 		return nil, err
 	}

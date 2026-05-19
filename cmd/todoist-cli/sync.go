@@ -62,8 +62,13 @@ func syncLabels(ctx context.Context, db *sql.DB, client *todoist.Client) (int, e
 	if err != nil {
 		return 0, err
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	for _, l := range items {
-		_, err := db.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`INSERT INTO labels(id,name,color,ord,is_favorite) VALUES(?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   name=excluded.name, color=excluded.color,
@@ -73,7 +78,7 @@ func syncLabels(ctx context.Context, db *sql.DB, client *todoist.Client) (int, e
 			return 0, err
 		}
 	}
-	return len(items), nil
+	return len(items), tx.Commit()
 }
 
 func syncProjects(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
@@ -81,8 +86,13 @@ func syncProjects(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 	if err != nil {
 		return 0, err
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	for _, p := range items {
-		_, err := db.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`INSERT INTO projects(id,name,color,ord,is_archived,is_favorite,view_style)
 			 VALUES(?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
@@ -95,7 +105,7 @@ func syncProjects(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 			return 0, err
 		}
 	}
-	return len(items), nil
+	return len(items), tx.Commit()
 }
 
 func syncSections(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
@@ -103,8 +113,13 @@ func syncSections(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 	if err != nil {
 		return 0, err
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	for i, s := range items {
-		_, err := db.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`INSERT INTO sections(id,name,project_id,ord,is_archived) VALUES(?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   name=excluded.name, project_id=excluded.project_id,
@@ -114,7 +129,7 @@ func syncSections(ctx context.Context, db *sql.DB, client *todoist.Client) (int,
 			return 0, err
 		}
 	}
-	return len(items), nil
+	return len(items), tx.Commit()
 }
 
 func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, error) {
@@ -122,6 +137,13 @@ func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, er
 	if err != nil {
 		return 0, err
 	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	ids := make([]any, len(items))
 	for i, t := range items {
 		ids[i] = t.ID
@@ -129,12 +151,12 @@ func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, er
 	if len(ids) > 0 {
 		placeholders := strings.Repeat("?,", len(ids))
 		placeholders = placeholders[:len(placeholders)-1]
-		if _, err := db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM tasks WHERE id NOT IN (`+placeholders+`)`, ids...); err != nil {
 			return 0, fmt.Errorf("purge deleted tasks: %w", err)
 		}
 	} else {
-		if _, err := db.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
 			return 0, fmt.Errorf("purge all tasks: %w", err)
 		}
 	}
@@ -154,7 +176,7 @@ func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, er
 			}
 			dueRecurring = boolToInt(t.Due.IsRecurring)
 		}
-		_, err := db.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`INSERT INTO tasks(
 			   id,content,description,project_id,section_id,parent_id,
 			   priority,ord,is_completed,
@@ -178,19 +200,19 @@ func syncTasks(ctx context.Context, db *sql.DB, client *todoist.Client) (int, er
 		if err != nil {
 			return 0, fmt.Errorf("task %s: %w", t.ID, err)
 		}
-		if _, err := db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM task_labels WHERE task_id=?`, t.ID); err != nil {
 			return 0, err
 		}
 		for _, label := range t.Labels {
-			if _, err := db.ExecContext(ctx,
+			if _, err := tx.ExecContext(ctx,
 				`INSERT OR IGNORE INTO task_labels(task_id,label_name) VALUES(?,?)`,
 				t.ID, label); err != nil {
 				return 0, err
 			}
 		}
 	}
-	return len(items), nil
+	return len(items), tx.Commit()
 }
 
 // upsertTasks inserts or updates a slice of tasks in the local cache.
