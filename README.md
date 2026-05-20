@@ -68,6 +68,7 @@ export TODOIST_TOKEN=your_token_here
 | `mv <task> <section>` | Move task to a different section (kanban column) |
 | `rm <task>` | Delete a task |
 | `cp <task>` | Copy task URL to clipboard |
+| `open <task>` | Open task in the browser |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
 | `pick -l <label>` | Pick from label-filtered tasks |
 | `cd <project>` | Set active project context |
