@@ -6,6 +6,12 @@ A fast, minimal Todoist CLI with a local SQLite cache. Designed for keyboard-dri
 
 ## Install
 
+**Via Homebrew:**
+
+```sh
+brew install nyactl/tap/todoist-cli
+```
+
 **Via `go install`:**
 
 ```sh
