@@ -18,6 +18,7 @@ var (
 	addLabels      []string
 	addDescription string
 	addDue         string
+	addPriority    int
 )
 
 var addCmd = &cobra.Command{
@@ -41,7 +42,10 @@ var addCmd = &cobra.Command{
 		}
 		client := todoist.New(token)
 
-		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue}
+		if addPriority != 0 && (addPriority < 1 || addPriority > 4) {
+			return fmt.Errorf("priority must be between 1 and 4")
+		}
+		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue, Priority: addPriority}
 		if addProject != "" {
 			id, err := tasks.ProjectByName(ctx, conn, addProject)
 			if err != nil {
@@ -174,6 +178,7 @@ func init() {
 	addCmd.Flags().StringArrayVarP(&addLabels, "label", "l", nil, "label name (repeatable: -l <name> -l <name>)")
 	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
 	addCmd.Flags().StringVarP(&addDue, "due", "D", "", "due date in natural language (e.g. \"tomorrow\", \"every monday\")")
+	addCmd.Flags().IntVarP(&addPriority, "priority", "P", 0, "priority 1–4 (1=normal, 4=urgent)")
 	addCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	addCmd.RegisterFlagCompletionFunc("section", addSectionCompleter)
 	addCmd.RegisterFlagCompletionFunc("label", labelCompleter)
