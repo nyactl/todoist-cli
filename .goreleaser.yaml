@@ -38,9 +38,9 @@ brews:
     description: "Todoist CLI"
     license: "MIT"
     install: |
-      bin.install "todoist-cli" => "td"
+      bin.install "todoist-cli"
     test: |
-      system "#{bin}/td", "--version"
+      system "#{bin}/todoist-cli", "--version"
 
 changelog:
   sort: asc
