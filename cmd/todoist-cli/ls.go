@@ -511,7 +511,7 @@ func printBoard(ts []tasks.Task) {
 }
 
 func init() {
-	lsCmd.Flags().StringVar(&lsDone, "done", "", "show completed tasks: today, week, month, year, Nd/Nw/Nm")
+	lsCmd.Flags().StringVarP(&lsDone, "done", "d", "", "show completed tasks: today, week, month, year, Nd/Nw/Nm")
 	lsCmd.Flags().StringArrayVarP(&lsLabels, "label", "l", nil, "filter by label (repeatable, AND logic)")
 	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
