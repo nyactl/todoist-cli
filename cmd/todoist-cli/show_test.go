@@ -1,0 +1,244 @@
+package main
+
+import (
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/nyactl/todoist-cli/internal/todoist"
+)
+
+// stubTaskHandler returns an HTTP handler that serves a single task on GET /tasks/{id}
+// and an empty comment list on GET /comments.
+func stubTaskHandler(task todoist.Task) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, task)
+	})
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Comment]{})
+	})
+	return mux
+}
+
+func TestShow_DisplaysBasicDetails(t *testing.T) {
+	task := todoist.Task{
+		ID:      "task-abc",
+		Content: "Write report",
+		URL:     "https://todoist.com/app/task/task-abc",
+	}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Write report", "p1", "")
+
+	out, err := runCmd(t, "show", "task-abc")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "Write report") {
+		t.Errorf("expected content in output, got: %q", out)
+	}
+	if !strings.Contains(out, "todoist.com") {
+		t.Errorf("expected URL in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysDescription(t *testing.T) {
+	task := todoist.Task{
+		ID:          "task-desc",
+		Content:     "Deploy service",
+		Description: "Run the deployment script and verify health checks.",
+	}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-desc", "Deploy service", "p1", "")
+
+	out, err := runCmd(t, "show", "task-desc")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "Run the deployment script") {
+		t.Errorf("expected description in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysDueDate(t *testing.T) {
+	task := todoist.Task{
+		ID:      "task-due",
+		Content: "Submit report",
+		Due:     &todoist.Due{Date: "2026-06-10", String: "Jun 10"},
+	}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-due", "Submit report", "p1", "")
+
+	out, err := runCmd(t, "show", "task-due")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "2026-06-10") {
+		t.Errorf("expected due date in output, got: %q", out)
+	}
+	if !strings.Contains(out, "Jun 10") {
+		t.Errorf("expected due string in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysDueDatetime(t *testing.T) {
+	task := todoist.Task{
+		ID:      "task-dt",
+		Content: "Call client",
+		Due:     &todoist.Due{Date: "2026-06-10", Datetime: "2026-06-10T14:00:00Z", String: "Jun 10 2pm"},
+	}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-dt", "Call client", "p1", "")
+
+	out, err := runCmd(t, "show", "task-dt")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	// When Datetime is set it takes precedence over Date in the output.
+	if !strings.Contains(out, "2026-06-10T14:00:00Z") {
+		t.Errorf("expected datetime in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysLabels(t *testing.T) {
+	task := todoist.Task{
+		ID:      "task-labels",
+		Content: "Review PR",
+		Labels:  []string{"urgent", "work"},
+	}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-labels", "Review PR", "p1", "")
+
+	out, err := runCmd(t, "show", "task-labels")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "urgent") {
+		t.Errorf("expected label 'urgent' in output, got: %q", out)
+	}
+	if !strings.Contains(out, "work") {
+		t.Errorf("expected label 'work' in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysComments(t *testing.T) {
+	task := todoist.Task{ID: "task-c", Content: "Fix bug"}
+	comments := []todoist.Comment{
+		{ID: "c1", TaskID: "task-c", Content: "Needs a unit test too.", PostedAt: "2026-06-01T09:00:00Z"},
+		{ID: "c2", TaskID: "task-c", Content: "Confirmed fixed.", PostedAt: "2026-06-02T10:00:00Z"},
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, task)
+	})
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Comment]{Results: comments})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-c", "Fix bug", "p1", "")
+
+	out, err := runCmd(t, "show", "task-c")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "Needs a unit test too.") {
+		t.Errorf("expected first comment in output, got: %q", out)
+	}
+	if !strings.Contains(out, "Confirmed fixed.") {
+		t.Errorf("expected second comment in output, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysSubtasks(t *testing.T) {
+	task := todoist.Task{ID: "task-parent", Content: "Epic task"}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-parent", "Epic task", "p1", "")
+	hSeedSubtask(t, env.conn, "sub-1", "Subtask one", "p1", "task-parent")
+	hSeedSubtask(t, env.conn, "sub-2", "Subtask two", "p1", "task-parent")
+
+	out, err := runCmd(t, "show", "task-parent")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "Subtask one") {
+		t.Errorf("expected subtask one in output, got: %q", out)
+	}
+	if !strings.Contains(out, "Subtask two") {
+		t.Errorf("expected subtask two in output, got: %q", out)
+	}
+}
+
+func TestShow_ResolvesPrefix(t *testing.T) {
+	var receivedID string
+	task := todoist.Task{ID: "task-xyz-full", Content: "Refactor auth"}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		receivedID = strings.TrimPrefix(r.URL.Path, "/tasks/")
+		writeJSON(w, task)
+	})
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Comment]{})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-xyz-full", "Refactor auth", "p1", "")
+
+	// Resolve by task name.
+	if _, err := runCmd(t, "show", "Refactor auth"); err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if receivedID != "task-xyz-full" {
+		t.Errorf("expected API call with full ID 'task-xyz-full', got %q", receivedID)
+	}
+}
+
+func TestShow_APIError_ReturnsError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+	})
+	newTestEnv(t, mux)
+
+	_, err := runCmd(t, "show", "nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error when API returns 404, got nil")
+	}
+}
+
+func TestShow_NoDescription_Omitted(t *testing.T) {
+	task := todoist.Task{ID: "task-nodesc", Content: "Simple task", Description: ""}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-nodesc", "Simple task", "p1", "")
+
+	out, err := runCmd(t, "show", "task-nodesc")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	// Output should not have a blank description section.
+	if strings.Contains(out, "\n\n\n") {
+		t.Errorf("unexpected extra blank lines in output: %q", out)
+	}
+}
+
+func TestShow_NoDueDate_Omitted(t *testing.T) {
+	task := todoist.Task{ID: "task-nodue", Content: "Timeless task", Due: nil}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-nodue", "Timeless task", "p1", "")
+
+	out, err := runCmd(t, "show", "task-nodue")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if strings.Contains(out, "due") {
+		t.Errorf("expected no due date in output, got: %q", out)
+	}
+}

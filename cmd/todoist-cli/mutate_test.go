@@ -73,6 +73,101 @@ func TestAdd_WithSection_SendsCorrectSectionID(t *testing.T) {
 	}
 }
 
+func TestAdd_WithPriority_SendsCorrectPriority(t *testing.T) {
+	var gotPriority int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var req todoist.CreateTaskRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		gotPriority = req.Priority
+		writeJSON(w, todoist.Task{ID: "t1", Content: "Urgent task", Priority: req.Priority})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	if _, err := runCmd(t, "add", "Urgent task", "--priority", "4"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if gotPriority != 4 {
+		t.Errorf("expected priority 4 sent to API, got %d", gotPriority)
+	}
+}
+
+func TestAdd_WithPriority_StoredInCache(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var req todoist.CreateTaskRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, todoist.Task{ID: "t-prio", Content: "High priority", Priority: req.Priority})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	if _, err := runCmd(t, "add", "High priority", "--priority", "3"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	var priority int
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT priority FROM tasks WHERE id = 't-prio'`).Scan(&priority)
+	if priority != 3 {
+		t.Errorf("expected priority 3 in local cache, got %d", priority)
+	}
+}
+
+func TestAdd_WithoutPriority_OmitsFieldFromRequest(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, todoist.Task{ID: "t2", Content: "Normal task", Priority: 1})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"})
+
+	if _, err := runCmd(t, "add", "Normal task"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, ok := body["priority"]; ok {
+		t.Error("expected priority field to be absent from request when not specified")
+	}
+}
+
+func TestAdd_InvalidPriority_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+	_, err := runCmd(t, "add", "Task", "--priority", "5")
+	if err == nil {
+		t.Fatal("expected error for priority 5, got nil")
+	}
+}
+
+func TestAdd_NegativePriority_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+	_, err := runCmd(t, "add", "Task", "--priority=-1")
+	if err == nil {
+		t.Fatal("expected error for negative priority, got nil")
+	}
+}
+
 func TestAdd_WithoutProject_ErrorWhenSectionGiven(t *testing.T) {
 	env := newTestEnv(t, emptyAPI())
 	hSeedProject(t, env.conn, "p1", "Work")

@@ -127,6 +127,39 @@ func hSeedTask(t *testing.T, conn *sql.DB, id, content, projectID, sectionID str
 	}
 }
 
+func hSeedSubtask(t *testing.T, conn *sql.DB, id, content, projectID, parentID string) {
+	t.Helper()
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, parent_id) VALUES (?, ?, ?, ?)`,
+		id, content, projectID, parentID); err != nil {
+		t.Fatalf("seedSubtask: %v", err)
+	}
+}
+
+func hSeedLabel(t *testing.T, conn *sql.DB, id, name string, ord int) {
+	t.Helper()
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO labels (id, name, ord) VALUES (?, ?, ?)`, id, name, ord); err != nil {
+		t.Fatalf("seedLabel: %v", err)
+	}
+}
+
+func hSeedProjectOrd(t *testing.T, conn *sql.DB, id, name string, ord int) {
+	t.Helper()
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO projects (id, name, ord) VALUES (?, ?, ?)`, id, name, ord); err != nil {
+		t.Fatalf("seedProjectOrd: %v", err)
+	}
+}
+
+func hSeedArchivedProject(t *testing.T, conn *sql.DB, id, name string) {
+	t.Helper()
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO projects (id, name, is_archived) VALUES (?, ?, 1)`, id, name); err != nil {
+		t.Fatalf("seedArchivedProject: %v", err)
+	}
+}
+
 // --- API stub helpers ---
 
 type apiPage[T any] struct {
