@@ -95,6 +95,7 @@ export TODOIST_TOKEN=your_token_here
 | `open <task>` | Reopen a completed task |
 | `search <query>` | Search tasks by content or description across all projects |
 | `comment <task> <text>` | Add a comment to a task |
+| `overdue` | Triage overdue tasks interactively (done, reschedule, skip) |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
 | `pick -l <label>` | Pick from label-filtered tasks |
 | `cd <project>` | Set active project context |

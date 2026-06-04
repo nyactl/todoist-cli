@@ -126,6 +126,16 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	}
 }
 
+func Overdue(ctx context.Context, db *sql.DB) ([]Task, error) {
+	return query(ctx, db,
+		selectCols+`
+		WHERE t.is_completed = 0
+		  AND t.due_date IS NOT NULL
+		  AND t.due_date < date('now')
+		  AND (t.parent_id IS NULL OR t.parent_id = '')
+		ORDER BY t.due_date ASC, t.priority DESC, p.ord, t.ord`)
+}
+
 func Search(ctx context.Context, db *sql.DB, q string) ([]Task, error) {
 	pattern := "%" + strings.ToLower(q) + "%"
 	return query(ctx, db,
