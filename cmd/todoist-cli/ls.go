@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	lsDone   string
-	lsLabels []string
-	lsBoard  bool
+	lsDone     string
+	lsLabels   []string
+	lsBoard    bool
+	lsPriority int
 )
 
 var lsCmd = &cobra.Command{
@@ -34,6 +35,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if lsDone != "" {
 			return runLsDone(cmd)
+		}
+		if lsPriority != 0 && (lsPriority < 1 || lsPriority > 4) {
+			return fmt.Errorf("priority must be between 1 and 4")
 		}
 		conn, err := db.Open()
 		if err != nil {
@@ -56,6 +60,7 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			if err != nil {
 				return err
 			}
+			ts = filterTasksByPriority(ts, lsPriority)
 			if len(ts) == 0 {
 				fmt.Println("no tasks")
 				return nil
@@ -69,6 +74,7 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			if err != nil {
 				return err
 			}
+			ts = filterTasksByPriority(ts, lsPriority)
 			if len(ts) == 0 {
 				fmt.Println("no tasks")
 				return nil
@@ -83,6 +89,7 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			if err != nil {
 				return err
 			}
+			ts = filterTasksByPriority(ts, lsPriority)
 			if len(ts) == 0 {
 				fmt.Println("nothing due")
 				return nil
@@ -380,6 +387,19 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
+func filterTasksByPriority(ts []tasks.Task, priority int) []tasks.Task {
+	if priority == 0 {
+		return ts
+	}
+	out := ts[:0]
+	for _, t := range ts {
+		if t.Priority == priority {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func periodCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	return []string{"today", "week", "month", "year", "1d", "7d", "30d", "1w", "2w", "1m"},
 		cobra.ShellCompDirectiveNoFileComp
@@ -514,6 +534,7 @@ func init() {
 	lsCmd.Flags().StringVarP(&lsDone, "done", "d", "", "show completed tasks: today, week, month, year, Nd/Nw/Nm")
 	lsCmd.Flags().StringArrayVarP(&lsLabels, "label", "l", nil, "filter by label (repeatable, AND logic)")
 	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
+	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(lsCmd)

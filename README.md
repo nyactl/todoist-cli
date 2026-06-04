@@ -64,6 +64,7 @@ export TODOIST_TOKEN=your_token_here
 | `ls -b` | Board view — sections as side-by-side columns |
 | `ls -d [period]` | List completed tasks (live API call) |
 | `ls -l <label>` | Filter by label (repeatable, AND logic) |
+| `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |
 | `add <content>` | Create a task in the active project |
 | `add -D <due>` | Natural language due date — e.g. `"tomorrow"`, `"every monday"` |
 | `add -p <project>` | Override project |

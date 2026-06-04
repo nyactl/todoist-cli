@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -165,6 +166,95 @@ func TestLs_LabelFilter(t *testing.T) {
 	}
 	if strings.Contains(out, "Normal task") {
 		t.Errorf("'Normal task' should not appear when filtering by label, got: %q", out)
+	}
+}
+
+func TestLs_PriorityFilter_ShowsOnlyMatchingPriority(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+	// Seed tasks at different priorities.
+	seedTaskWithPriority(t, env, "t1", "Urgent task", "p1", 4)
+	seedTaskWithPriority(t, env, "t2", "Normal task", "p1", 1)
+	seedTaskWithPriority(t, env, "t3", "High task", "p1", 3)
+
+	out, err := runCmd(t, "ls", "--priority", "4")
+	if err != nil {
+		t.Fatalf("ls: %v", err)
+	}
+	if !strings.Contains(out, "Urgent task") {
+		t.Errorf("expected urgent task in output, got: %q", out)
+	}
+	if strings.Contains(out, "Normal task") {
+		t.Errorf("expected normal task to be filtered out, got: %q", out)
+	}
+	if strings.Contains(out, "High task") {
+		t.Errorf("expected high task to be filtered out, got: %q", out)
+	}
+}
+
+func TestLs_PriorityFilter_NoMatch_ShowsNoTasks(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+	seedTaskWithPriority(t, env, "t1", "Normal task", "p1", 1)
+
+	out, err := runCmd(t, "ls", "--priority", "4")
+	if err != nil {
+		t.Fatalf("ls: %v", err)
+	}
+	if !strings.Contains(out, "no tasks") {
+		t.Errorf("expected 'no tasks' when no priority match, got: %q", out)
+	}
+}
+
+func TestLs_PriorityFilter_DueTodayView(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	today := "2026-06-04"
+	seedTaskWithPriorityAndDue(t, env, "t1", "Urgent due", "p1", 4, today)
+	seedTaskWithPriorityAndDue(t, env, "t2", "Normal due", "p1", 1, today)
+
+	out, err := runCmd(t, "ls", "-P", "4")
+	if err != nil {
+		t.Fatalf("ls: %v", err)
+	}
+	if !strings.Contains(out, "Urgent due") {
+		t.Errorf("expected urgent task in output, got: %q", out)
+	}
+	if strings.Contains(out, "Normal due") {
+		t.Errorf("expected normal task to be filtered out, got: %q", out)
+	}
+}
+
+func TestLs_InvalidPriority_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+	_, err := runCmd(t, "ls", "--priority", "5")
+	if err == nil {
+		t.Fatal("expected error for priority 5, got nil")
+	}
+}
+
+// seedTaskWithPriority inserts a task with a specific priority directly into the DB.
+func seedTaskWithPriority(t *testing.T, env *testEnv, id, content, projectID string, priority int) {
+	t.Helper()
+	if _, err := env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, priority) VALUES (?, ?, ?, ?)`,
+		id, content, projectID, priority); err != nil {
+		t.Fatalf("seedTaskWithPriority: %v", err)
+	}
+}
+
+func seedTaskWithPriorityAndDue(t *testing.T, env *testEnv, id, content, projectID string, priority int, due string) {
+	t.Helper()
+	if _, err := env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, priority, due_date) VALUES (?, ?, ?, ?, ?)`,
+		id, content, projectID, priority, due); err != nil {
+		t.Fatalf("seedTaskWithPriorityAndDue: %v", err)
 	}
 }
 
