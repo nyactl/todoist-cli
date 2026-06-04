@@ -28,6 +28,8 @@ git tag v1.x.0
 git push origin v1.x.0
 ```
 
+> Release tags (`v*`) are protected against deletion and force-pushes.
+
 GitHub Actions takes it from there:
 1. Tests run — release is blocked if they fail
 2. GoReleaser builds binaries, `.deb`, `.rpm`, and tarballs
