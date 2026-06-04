@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.0] - 2026-06-04
+
+### Bug Fixes
+
+- Remove --tag flag from git-cliff, fix duplicate CHANGELOG sections
+
+### Documentation
+
+- Clarify tag protection scope in RELEASING.md
+- Add .deb and .rpm install instructions
+
+### Features
+
+- Add cosign keyless signing for release artifacts
+- Add comment command to post task comments
+
+
 ## [1.3.0] - 2026-06-04
 
 ### Bug Fixes
