@@ -126,6 +126,17 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	}
 }
 
+func Search(ctx context.Context, db *sql.DB, q string) ([]Task, error) {
+	pattern := "%" + strings.ToLower(q) + "%"
+	return query(ctx, db,
+		selectCols+`
+		WHERE t.is_completed = 0
+		  AND (t.parent_id IS NULL OR t.parent_id = '')
+		  AND (lower(t.content) LIKE ? OR lower(t.description) LIKE ?)
+		ORDER BY t.priority DESC, p.ord, t.ord`,
+		pattern, pattern)
+}
+
 func Subtasks(ctx context.Context, db *sql.DB, taskID string) ([]Task, error) {
 	return query(ctx, db,
 		selectCols+`

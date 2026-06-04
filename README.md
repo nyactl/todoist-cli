@@ -77,6 +77,7 @@ export TODOIST_TOKEN=your_token_here
 | `rm <task>` | Delete a task |
 | `cp <task>` | Copy task URL to clipboard |
 | `open <task>` | Reopen a completed task |
+| `search <query>` | Search tasks by content or description across all projects |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
 | `pick -l <label>` | Pick from label-filtered tasks |
 | `cd <project>` | Set active project context |
