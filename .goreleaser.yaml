@@ -9,7 +9,6 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -19,14 +18,23 @@ builds:
 archives:
   - id: default
     name_template: "todoist-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        formats: [zip]
     files:
       - README.md
 
 checksum:
   name_template: "checksums.txt"
+
+nfpms:
+  - package_name: todoist-cli
+    homepage: "https://github.com/nyactl/todoist-cli"
+    maintainer: "nyactl <noreply@github.com>"
+    description: "Fast, minimal Todoist CLI with a local SQLite cache"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
 
 brews:
   - name: todoist-cli
