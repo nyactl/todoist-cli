@@ -39,12 +39,13 @@ nfpms:
 brews:
   - name: todoist-cli
     directory: Formula
+    skip_upload: auto
     repository:
       owner: nyactl
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/nyactl/todoist-cli"
-    description: "Todoist CLI"
+    description: "Fast, minimal Todoist CLI with a local SQLite cache"
     license: "MIT"
     install: |
       bin.install "todoist-cli"
