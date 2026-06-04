@@ -231,6 +231,33 @@ func TestLs_PriorityFilter_DueTodayView(t *testing.T) {
 	}
 }
 
+func TestLs_PriorityFilter_CombinedWithLabel(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+	seedTaskWithPriority(t, env, "t1", "Urgent+urgent label", "p1", 4)
+	seedTaskWithPriority(t, env, "t2", "Normal+urgent label", "p1", 1)
+	seedTaskWithPriority(t, env, "t3", "Urgent no label", "p1", 4)
+	env.conn.ExecContext(context.Background(), `INSERT INTO task_labels VALUES ('t1', 'urgent')`)
+	env.conn.ExecContext(context.Background(), `INSERT INTO task_labels VALUES ('t2', 'urgent')`)
+
+	out, err := runCmd(t, "ls", "-l", "urgent", "-P", "4")
+	if err != nil {
+		t.Fatalf("ls: %v", err)
+	}
+	if !strings.Contains(out, "Urgent+urgent label") {
+		t.Errorf("expected task matching both label and priority, got: %q", out)
+	}
+	if strings.Contains(out, "Normal+urgent label") {
+		t.Errorf("expected normal priority task filtered out, got: %q", out)
+	}
+	if strings.Contains(out, "Urgent no label") {
+		t.Errorf("expected task without label filtered out, got: %q", out)
+	}
+}
+
 func TestLs_InvalidPriority_Errors(t *testing.T) {
 	newTestEnv(t, nil)
 	_, err := runCmd(t, "ls", "--priority", "5")
