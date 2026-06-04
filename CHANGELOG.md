@@ -1,11 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### CI
-
-- Gate release on test job passing
-
 ## [1.2.0] - 2026-06-04
 
 ### Bug Fixes
@@ -20,6 +14,7 @@
 ### Features
 
 - Add -P priority filter to ls command
+
 
 ## [1.1.0] - 2026-06-03
 
@@ -36,6 +31,7 @@
 
 - Add Homebrew tap via GoReleaser
 - Add --priority flag to add command
+
 
 ## [1.0.0] - 2026-05-20
 
@@ -72,5 +68,6 @@
 ### Refactoring
 
 - Clean up command structure, fix completions, add description flag
+
 
 

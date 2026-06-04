@@ -3,15 +3,13 @@ header = "# Changelog\n\n"
 body = """
 {% if version %}\
 ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
-{% else %}\
-## Unreleased
-{% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group }}
 {% for commit in commits %}
 - {{ commit.message | upper_first }}\
 {% endfor %}
 {% endfor %}\n
+{% endif %}\
 """
 trim = true
 footer = ""
