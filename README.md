@@ -12,6 +12,18 @@ A fast, minimal Todoist CLI with a local SQLite cache. Designed for keyboard-dri
 brew install nyactl/tap/todoist-cli
 ```
 
+**Via Linux package (`.deb` / `.rpm`):**
+
+Download the package for your architecture from the [releases page](https://github.com/nyactl/todoist-cli/releases) and install:
+
+```sh
+# Debian / Ubuntu
+sudo dpkg -i todoist-cli_1.3.0_linux_amd64.deb
+
+# Fedora / RHEL
+sudo rpm -i todoist-cli_1.3.0_linux_amd64.rpm
+```
+
 **Via `go install`:**
 
 ```sh
