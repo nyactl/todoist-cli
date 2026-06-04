@@ -24,6 +24,16 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+
 nfpms:
   - package_name: todoist-cli
     homepage: "https://github.com/nyactl/todoist-cli"

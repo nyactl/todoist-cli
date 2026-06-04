@@ -28,6 +28,10 @@ make install   # installs to ~/.local/bin/todoist-cli
 
 Add `~/.local/bin` to your `$PATH` if needed.
 
+**Verify a release (optional):**
+
+All releases are signed with [cosign](https://github.com/sigstore/cosign) via keyless Sigstore signing. See [RELEASING.md](RELEASING.md#verifying-release-signatures) for the full verification workflow.
+
 ## Auth
 
 ```sh

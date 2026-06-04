@@ -43,6 +43,44 @@ After the release workflow completes, draft and publish prose release notes. GoR
 gh release edit vX.Y.Z --notes "..."
 ```
 
+## Verifying release signatures
+
+Every release is signed with [cosign](https://github.com/sigstore/cosign) using keyless signing via [Sigstore](https://sigstore.dev). No private key is involved — the signature is tied to the GitHub Actions workflow identity for the exact tag.
+
+Each release publishes `checksums.txt` (SHA256 hashes of all artifacts) and `checksums.txt.sigstore.json` (the cosign bundle). Verifying both proves the binary was built from source by the release workflow and has not been tampered with.
+
+### Install cosign
+
+```sh
+brew install cosign        # macOS
+# or: https://github.com/sigstore/cosign/releases
+```
+
+### Verify a release
+
+```sh
+VERSION=v1.3.0
+
+# Download the checksum file and its signature bundle
+curl -LO https://github.com/nyactl/todoist-cli/releases/download/${VERSION}/checksums.txt
+curl -LO https://github.com/nyactl/todoist-cli/releases/download/${VERSION}/checksums.txt.sigstore.json
+
+# Verify the signature — proves it came from the release workflow
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/nyactl/todoist-cli/.github/workflows/release.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums.txt
+
+# Download the binary for your platform
+curl -LO https://github.com/nyactl/todoist-cli/releases/download/${VERSION}/todoist-cli_${VERSION#v}_darwin_arm64.tar.gz
+
+# Verify the binary matches the signed checksum
+sha256sum --check --ignore-missing checksums.txt
+```
+
+If both commands succeed: the binary is authentic.
+
 ## Pre-release / RC
 
 Use an RC tag when shipping significant changes (new commands, major refactors) to get early feedback before promoting to stable.
