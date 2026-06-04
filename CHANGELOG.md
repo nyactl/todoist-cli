@@ -2,13 +2,6 @@
 
 ## [1.3.0] - 2026-06-04
 
-### Documentation
-
-- Clarify tag protection scope in RELEASING.md
-
-
-## [1.3.0] - 2026-06-04
-
 ### Bug Fixes
 
 - Remove Unreleased section from CHANGELOG, only emit tagged releases
