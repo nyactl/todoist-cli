@@ -94,6 +94,7 @@ export TODOIST_TOKEN=your_token_here
 | `cp <task>` | Copy task URL to clipboard |
 | `open <task>` | Reopen a completed task |
 | `search <query>` | Search tasks by content or description across all projects |
+| `comment <task> <text>` | Add a comment to a task |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
 | `pick -l <label>` | Pick from label-filtered tasks |
 | `cd <project>` | Set active project context |
