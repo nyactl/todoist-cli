@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.3.0] - 2026-06-04
+
+### Documentation
+
+- Clarify tag protection scope in RELEASING.md
+
+
+## [1.3.0] - 2026-06-04
+
+### Bug Fixes
+
+- Remove Unreleased section from CHANGELOG, only emit tagged releases
+- Align release/CI test gates, skip Homebrew for RC, exclude RC from changelog
+
+### CI
+
+- Gate release on test job passing
+
+### Documentation
+
+- Add RELEASING.md with semver guidelines, checklist, and RC workflow
+
+### Features
+
+- Add CHANGELOG.md with git-cliff, auto-update on release
+- Add .deb/.rpm packages, drop Windows support
+- Add search command for full-text task search
+
+
 ## [1.2.0] - 2026-06-04
 
 ### Bug Fixes
