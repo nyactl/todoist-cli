@@ -19,6 +19,7 @@ var (
 	addDescription string
 	addDue         string
 	addPriority    int
+	addParent      string
 )
 
 var addCmd = &cobra.Command{
@@ -45,14 +46,28 @@ var addCmd = &cobra.Command{
 		if addPriority != 0 && (addPriority < 1 || addPriority > 4) {
 			return fmt.Errorf("priority must be between 1 and 4")
 		}
+		if addParent != "" && addSection != "" {
+			return fmt.Errorf("--parent and --section cannot be used together")
+		}
 		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue, Priority: addPriority}
+		if addParent != "" {
+			parent, err := tasks.ByID(ctx, conn, addParent)
+			if err != nil {
+				return fmt.Errorf("parent task: %w", err)
+			}
+			req.ParentID = parent.ID
+			// inherit parent's project unless explicitly overridden
+			if addProject == "" {
+				req.ProjectID = parent.ProjectID
+			}
+		}
 		if addProject != "" {
 			id, err := tasks.ProjectByName(ctx, conn, addProject)
 			if err != nil {
 				return err
 			}
 			req.ProjectID = id
-		} else {
+		} else if addParent == "" {
 			st, err := loadContext(ctx, conn)
 			if err != nil {
 				return err
@@ -179,6 +194,8 @@ func init() {
 	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
 	addCmd.Flags().StringVarP(&addDue, "due", "D", "", "due date in natural language (e.g. \"tomorrow\", \"every monday\")")
 	addCmd.Flags().IntVarP(&addPriority, "priority", "P", 0, "priority 1–4 (1=normal, 4=urgent)")
+	addCmd.Flags().StringVar(&addParent, "parent", "", "parent task (name, ID, or prefix) — creates a subtask")
+	addCmd.RegisterFlagCompletionFunc("parent", taskCompleter)
 	addCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	addCmd.RegisterFlagCompletionFunc("section", addSectionCompleter)
 	addCmd.RegisterFlagCompletionFunc("label", labelCompleter)

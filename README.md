@@ -86,6 +86,7 @@ export TODOIST_TOKEN=your_token_here
 | `add -p <project>` | Override project |
 | `add -l <label>` | Attach label (repeatable) |
 | `add -P <1-4>` | Set priority (1=normal, 4=urgent) |
+| `add --parent <task>` | Create as subtask of the given task |
 | `done <task>` | Mark a task complete |
 | `edit <task>` | Edit content, due date, priority, description, labels or project |
 | `show <task>` | Show full task details, subtasks, and comments |
