@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0] - 2026-06-05
+
+### Features
+
+- Add overdue triage command
+- Add --parent flag to add for subtask creation
+
+
 ## [1.4.0] - 2026-06-04
 
 ### Bug Fixes
