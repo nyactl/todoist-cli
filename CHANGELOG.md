@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.0] - 2026-06-07
+
+### Documentation
+
+- Document projects add and rm in README
+
+### Features
+
+- Add projects add and rm subcommands
+
+
 ## [1.5.0] - 2026-06-05
 
 ### Features
