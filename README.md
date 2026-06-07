@@ -90,7 +90,9 @@ export TODOIST_TOKEN=your_token_here
 | `done <task>` | Mark a task complete |
 | `edit <task>` | Edit content, due date, priority, description, labels or project |
 | `show <task>` | Show full task details, subtasks, and comments |
-| `mv <task> <section>` | Move task to a different section (kanban column) |
+| `mv <task> <section>` | Move task to a different section within the current project |
+| `mv <task> -p <project>` | Move task to a different project |
+| `mv <task> -p <project> -s <section>` | Move task to a specific section in a different project |
 | `rm <task>` | Delete a task |
 | `cp <task>` | Copy task URL to clipboard |
 | `open <task>` | Reopen a completed task |

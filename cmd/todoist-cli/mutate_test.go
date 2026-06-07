@@ -259,6 +259,183 @@ func TestMv_RequiresProjectContext(t *testing.T) {
 	}
 }
 
+func TestMv_NeitherSectionNorProject_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t1", "Write tests", "p1", "")
+
+	_, err := runCmd(t, "mv", "Write tests")
+	if err == nil {
+		t.Fatal("expected error when no section or -p given, got nil")
+	}
+}
+
+func TestMv_BothPositionalAndProject_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	hSeedTask(t, env.conn, "t1", "Write tests", "p1", "")
+
+	_, err := runCmd(t, "mv", "Write tests", "Backlog", "-p", "Personal")
+	if err == nil {
+		t.Fatal("expected error when both positional section and -p given, got nil")
+	}
+}
+
+func TestMv_ToProject_CallsAPIWithProjectID(t *testing.T) {
+	var gotBody map[string]string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/move") {
+			json.NewDecoder(r.Body).Decode(&gotBody)
+		}
+		noopHandler(w, r)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	if _, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal"); err != nil {
+		t.Fatalf("mv -p: %v", err)
+	}
+	if gotBody["project_id"] != "p2" {
+		t.Errorf("expected project_id 'p2' sent to API, got %q", gotBody["project_id"])
+	}
+}
+
+func TestMv_ToProject_UpdatesCacheAndClearsSection(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", noopHandler)
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "s1")
+
+	out, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal")
+	if err != nil {
+		t.Fatalf("mv -p: %v", err)
+	}
+	if !strings.Contains(out, "Personal") {
+		t.Errorf("expected project name in output, got: %q", out)
+	}
+
+	var projectID, sectionID string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT project_id, COALESCE(section_id, '') FROM tasks WHERE id = 'task1'`).
+		Scan(&projectID, &sectionID)
+	if projectID != "p2" {
+		t.Errorf("expected project_id 'p2' in cache, got %q", projectID)
+	}
+	if sectionID != "" {
+		t.Errorf("expected section_id cleared after cross-project move, got %q", sectionID)
+	}
+}
+
+func TestMv_ToProjectWithSection_SendsSectionID(t *testing.T) {
+	var gotBody map[string]string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/move") {
+			json.NewDecoder(r.Body).Decode(&gotBody)
+		}
+		noopHandler(w, r)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedSection(t, env.conn, "s2", "Later", "p2", 0)
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	if _, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal", "-s", "Later"); err != nil {
+		t.Fatalf("mv -p -s: %v", err)
+	}
+	if gotBody["section_id"] != "s2" {
+		t.Errorf("expected section_id 's2' sent to API, got %q", gotBody["section_id"])
+	}
+	if gotBody["project_id"] != "" {
+		t.Errorf("expected no project_id in request when section_id provided, got %q", gotBody["project_id"])
+	}
+}
+
+func TestMv_ToProjectWithSection_UpdatesCache(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", noopHandler)
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedSection(t, env.conn, "s2", "Later", "p2", 0)
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	out, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal", "-s", "Later")
+	if err != nil {
+		t.Fatalf("mv -p -s: %v", err)
+	}
+	if !strings.Contains(out, "Personal") || !strings.Contains(out, "Later") {
+		t.Errorf("expected project and section in output, got: %q", out)
+	}
+
+	var projectID, sectionID string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT project_id, COALESCE(section_id, '') FROM tasks WHERE id = 'task1'`).
+		Scan(&projectID, &sectionID)
+	if projectID != "p2" {
+		t.Errorf("expected project_id 'p2' in cache, got %q", projectID)
+	}
+	if sectionID != "s2" {
+		t.Errorf("expected section_id 's2' in cache, got %q", sectionID)
+	}
+}
+
+func TestMv_ToProject_UnknownProject_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t1", "Buy coffee", "p1", "")
+
+	_, err := runCmd(t, "mv", "Buy coffee", "-p", "NoSuchProject")
+	if err == nil {
+		t.Fatal("expected error for unknown project, got nil")
+	}
+}
+
+func TestMv_ToProjectWithSection_UnknownSection_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedTask(t, env.conn, "t1", "Buy coffee", "p1", "")
+
+	_, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal", "-s", "NoSuchSection")
+	if err == nil {
+		t.Fatal("expected error for unknown section in destination project, got nil")
+	}
+}
+
+func TestMv_ToProject_APIError_ReturnsError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	_, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal")
+	if err == nil {
+		t.Fatal("expected error when API returns 403, got nil")
+	}
+
+	// cache must be unchanged
+	var projectID string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT project_id FROM tasks WHERE id = 'task1'`).Scan(&projectID)
+	if projectID != "p1" {
+		t.Errorf("expected task to remain in original project after API failure, got project_id %q", projectID)
+	}
+}
+
 // --- rm ---
 
 func TestRm_DeletesTaskFromDB(t *testing.T) {
