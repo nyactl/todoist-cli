@@ -67,6 +67,11 @@ type Comment struct {
 	PostedAt string `json:"posted_at"`
 }
 
+type CreateProjectRequest struct {
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id,omitempty"`
+}
+
 type CreateTaskRequest struct {
 	Content     string   `json:"content"`
 	Description string   `json:"description,omitempty"`
