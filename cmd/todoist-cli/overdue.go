@@ -99,12 +99,24 @@ var overdueCmd = &cobra.Command{
 						fmt.Fprintln(out, "  ! specify a date, e.g.: r tomorrow")
 						continue
 					}
-					if _, err := client.UpdateTaskFields(ctx, t.ID, map[string]any{"due_string": dateStr}); err != nil {
+					updated, err := client.UpdateTaskFields(ctx, t.ID, map[string]any{"due_string": dateStr})
+					if err != nil {
 						fmt.Fprintln(out, "  ! invalid date — try again")
 						continue
 					}
 					conn.ExecContext(ctx, `UPDATE tasks SET due_date=NULL, due_string=? WHERE id=?`, dateStr, t.ID)
-					fmt.Fprintln(out, "  → rescheduled")
+					label := ""
+					if updated.Due != nil {
+						label = updated.Due.Date
+						if updated.Due.String != "" && (updated.Due.IsRecurring || updated.Due.String != dateStr) {
+							label = updated.Due.String + "  ·  " + updated.Due.Date
+						}
+					}
+					if label != "" {
+						fmt.Fprintf(out, "  → %s\n", label)
+					} else {
+						fmt.Fprintln(out, "  → rescheduled")
+					}
 					nRescheduled++
 					acted = true
 

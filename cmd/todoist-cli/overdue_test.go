@@ -103,7 +103,7 @@ func TestOverdue_SkipAction(t *testing.T) {
 	}
 }
 
-func TestOverdue_RescheduleAction(t *testing.T) {
+func TestOverdue_RescheduleAction_PrintsResolvedDate(t *testing.T) {
 	var gotDueString string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +114,10 @@ func TestOverdue_RescheduleAction(t *testing.T) {
 				gotDueString = ds
 			}
 		}
-		writeJSON(w, map[string]string{"id": "t1"})
+		writeJSON(w, todoist.Task{
+			ID:  "t1",
+			Due: &todoist.Due{Date: "2026-06-10", String: "tomorrow"},
+		})
 	})
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
@@ -128,11 +131,52 @@ func TestOverdue_RescheduleAction(t *testing.T) {
 	if gotDueString != "tomorrow" {
 		t.Errorf("expected due_string 'tomorrow' sent to API, got %q", gotDueString)
 	}
-	if !strings.Contains(out, "→ rescheduled") {
-		t.Errorf("expected '→ rescheduled' in output, got: %q", out)
+	if !strings.Contains(out, "2026-06-10") {
+		t.Errorf("expected resolved date '2026-06-10' in output, got: %q", out)
 	}
 	if !strings.Contains(out, "1 rescheduled") {
 		t.Errorf("expected '1 rescheduled' in summary, got: %q", out)
+	}
+}
+
+func TestOverdue_RescheduleAction_RecurringShowsPatternAndDate(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, todoist.Task{
+			ID:  "t1",
+			Due: &todoist.Due{Date: "2026-06-09", String: "every monday", IsRecurring: true},
+		})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Weekly review", "p1")
+	setStdin(t, "r every monday\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "every monday  ·  2026-06-09") {
+		t.Errorf("expected 'every monday  ·  2026-06-09' in output, got: %q", out)
+	}
+}
+
+func TestOverdue_RescheduleAction_NoDueInResponse_FallsBackToRescheduled(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, todoist.Task{ID: "t1"})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Some task", "p1")
+	setStdin(t, "r tomorrow\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "→ rescheduled") {
+		t.Errorf("expected fallback '→ rescheduled' when API returns no due, got: %q", out)
 	}
 }
 
@@ -145,7 +189,7 @@ func TestOverdue_RescheduleInvalidDate_RepromptsAndRetries(t *testing.T) {
 			http.Error(w, `{"error":"invalid date"}`, http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, map[string]string{"id": "t1"})
+		writeJSON(w, todoist.Task{ID: "t1", Due: &todoist.Due{Date: "2026-06-10", String: "tomorrow"}})
 	})
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
@@ -159,8 +203,8 @@ func TestOverdue_RescheduleInvalidDate_RepromptsAndRetries(t *testing.T) {
 	if !strings.Contains(out, "invalid date") {
 		t.Errorf("expected 'invalid date' error shown, got: %q", out)
 	}
-	if !strings.Contains(out, "→ rescheduled") {
-		t.Errorf("expected successful reschedule after retry, got: %q", out)
+	if !strings.Contains(out, "2026-06-10") {
+		t.Errorf("expected resolved date after retry, got: %q", out)
 	}
 }
 
