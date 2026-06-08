@@ -300,6 +300,46 @@ func TestOverdue_Header_ProjectAndLabelsSeparatedByDot(t *testing.T) {
 	}
 }
 
+func TestOverdue_Header_MultipleLabels_CommaSeparated(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Review PR", "p1")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent'), ('t1', 'backend')`)
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "urgent") || !strings.Contains(out, "backend") {
+		t.Errorf("expected both labels in header, got: %q", out)
+	}
+	// labels must be comma-separated, not run together
+	if !strings.Contains(out, "urgent, backend") && !strings.Contains(out, "backend, urgent") {
+		t.Errorf("expected labels comma-separated in header, got: %q", out)
+	}
+}
+
+func TestOverdue_Header_ProjectSectionAndLabels_Combined(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix bug', 'p1', 's1', date('now', '-3 days'))`)
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Work / Backlog  ·  urgent") {
+		t.Errorf("expected 'Work / Backlog  ·  urgent' in header, got: %q", out)
+	}
+}
+
 func TestOverdue_Header_NoLabels_OmitsDotSeparator(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
@@ -404,6 +444,67 @@ func TestOverdue_ViewAction_CommentsAPIError_StillShowsDescription(t *testing.T)
 	}
 	if strings.Contains(out, "comments") {
 		t.Errorf("expected comments section omitted on API error, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_ShowsURL(t *testing.T) {
+	env := newTestEnv(t, emptyComments())
+	hSeedProject(t, env.conn, "p1", "Work")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, due_date, url) VALUES ('t1', 'Fix bug', 'p1', date('now', '-3 days'), 'https://todoist.com/task/t1')`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "https://todoist.com/task/t1") {
+		t.Errorf("expected URL in v output, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_DescriptionAndComments_BothShown(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Comment]{Results: []todoist.Comment{
+			{ID: "c1", TaskID: "t1", Content: "Blocked on infra", PostedAt: "2026-06-02T09:00:00Z"},
+		}})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Deploy service', 'p1', date('now', '-3 days'), 'Run the migration first')`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Run the migration first") {
+		t.Errorf("expected description in v output, got: %q", out)
+	}
+	if !strings.Contains(out, "Blocked on infra") {
+		t.Errorf("expected comment in v output, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_CommentsRequestUsesCorrectTaskID(t *testing.T) {
+	var gotTaskID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		gotTaskID = r.URL.Query().Get("task_id")
+		writeJSON(w, apiPage[todoist.Comment]{Results: []todoist.Comment{}})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "task-abc123", "Deploy service", "p1")
+	setStdin(t, "v\ns\n")
+
+	if _, err := runCmd(t, "overdue"); err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if gotTaskID != "task-abc123" {
+		t.Errorf("expected comments fetched with task_id 'task-abc123', got %q", gotTaskID)
 	}
 }
 
