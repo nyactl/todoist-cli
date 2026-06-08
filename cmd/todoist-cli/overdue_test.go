@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/nyactl/todoist-cli/internal/todoist"
 )
 
 // setStdin sets root's stdin for the duration of the test and restores it after.
@@ -24,6 +26,14 @@ func seedOverdueTask(t *testing.T, env *testEnv, id, content, projectID string) 
 		id, content, projectID); err != nil {
 		t.Fatalf("seedOverdueTask: %v", err)
 	}
+}
+
+// emptyComments returns a handler stub that responds to GET /comments with an empty list.
+// Use this when the test presses v but doesn't care about comment output.
+func emptyComments() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", pageResponse([]todoist.Comment{}))
+	return mux
 }
 
 func TestOverdue_NoOverdueTasks(t *testing.T) {
@@ -222,28 +232,95 @@ func TestOverdue_InvalidInputShowsHelp(t *testing.T) {
 	}
 }
 
-func TestOverdue_ViewAction_ShowsProjectAndSection(t *testing.T) {
+// --- header: project / section / labels (#31) ---
+
+func TestOverdue_Header_ShowsProject(t *testing.T) {
 	env := newTestEnv(t, nil)
-	hSeedProject(t, env.conn, "p1", "Work")
-	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
-	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix login bug', 'p1', 's1', date('now', '-3 days'))`)
-	setStdin(t, "v\ns\n")
+	hSeedProject(t, env.conn, "p1", "Personal")
+	seedOverdueTask(t, env, "t1", "Buy groceries", "p1")
+	setStdin(t, "s\n")
 
 	out, err := runCmd(t, "overdue")
 	if err != nil {
 		t.Fatalf("overdue: %v", err)
 	}
-	if !strings.Contains(out, "Work") {
-		t.Errorf("expected project name in details, got: %q", out)
-	}
-	if !strings.Contains(out, "Backlog") {
-		t.Errorf("expected section name in details, got: %q", out)
+	if !strings.Contains(out, "Personal") {
+		t.Errorf("expected project name in header, got: %q", out)
 	}
 }
 
-func TestOverdue_ViewAction_ShowsDescription(t *testing.T) {
+func TestOverdue_Header_ShowsProjectAndSection(t *testing.T) {
 	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix login bug', 'p1', 's1', date('now', '-3 days'))`)
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Work / Backlog") {
+		t.Errorf("expected 'Work / Backlog' in header, got: %q", out)
+	}
+}
+
+func TestOverdue_Header_ShowsLabels(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Review PR", "p1")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "urgent") {
+		t.Errorf("expected label 'urgent' in header, got: %q", out)
+	}
+}
+
+func TestOverdue_Header_ProjectAndLabelsSeparatedByDot(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Review PR", "p1")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Work  ·  urgent") {
+		t.Errorf("expected 'Work  ·  urgent' format in header, got: %q", out)
+	}
+}
+
+func TestOverdue_Header_NoLabels_OmitsDotSeparator(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Some task", "p1")
+	setStdin(t, "s\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	// "·" appears in the summary line ("0 done · 0 rescheduled") — check the
+	// header-specific form instead.
+	if strings.Contains(out, "Work  ·") {
+		t.Errorf("expected no dot separator in header when no labels present, got: %q", out)
+	}
+}
+
+// --- v = details: description + comments (#32) ---
+
+func TestOverdue_ViewAction_ShowsDescription(t *testing.T) {
+	env := newTestEnv(t, emptyComments())
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
 		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix login bug', 'p1', date('now', '-3 days'), 'Check the auth middleware first')`)
@@ -254,27 +331,95 @@ func TestOverdue_ViewAction_ShowsDescription(t *testing.T) {
 		t.Fatalf("overdue: %v", err)
 	}
 	if !strings.Contains(out, "Check the auth middleware first") {
-		t.Errorf("expected description in details, got: %q", out)
+		t.Errorf("expected description in v output, got: %q", out)
 	}
 	if !strings.Contains(out, "1 skipped") {
 		t.Errorf("expected task skipped after viewing, got: %q", out)
 	}
 }
 
-func TestOverdue_ViewAction_ShowsLabels(t *testing.T) {
-	env := newTestEnv(t, nil)
+func TestOverdue_ViewAction_ShowsComments(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Comment]{Results: []todoist.Comment{
+			{ID: "c1", TaskID: "t1", Content: "Confirmed in staging", PostedAt: "2026-06-01T10:00:00Z"},
+			{ID: "c2", TaskID: "t1", Content: "Blocked on deploy window", PostedAt: "2026-06-03T14:00:00Z"},
+		}})
+	})
+	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
-	seedOverdueTask(t, env, "t1", "Review PR", "p1")
-	env.conn.ExecContext(context.Background(),
-		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	seedOverdueTask(t, env, "t1", "Deploy service", "p1")
 	setStdin(t, "v\ns\n")
 
 	out, err := runCmd(t, "overdue")
 	if err != nil {
 		t.Fatalf("overdue: %v", err)
 	}
-	if !strings.Contains(out, "urgent") {
-		t.Errorf("expected label 'urgent' in details, got: %q", out)
+	if !strings.Contains(out, "comments") {
+		t.Errorf("expected 'comments' section header in v output, got: %q", out)
+	}
+	if !strings.Contains(out, "Confirmed in staging") {
+		t.Errorf("expected first comment in v output, got: %q", out)
+	}
+	if !strings.Contains(out, "Blocked on deploy window") {
+		t.Errorf("expected second comment in v output, got: %q", out)
+	}
+	if !strings.Contains(out, "2026-06-01") {
+		t.Errorf("expected comment date in v output, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_NoComments_OmitsSection(t *testing.T) {
+	env := newTestEnv(t, emptyComments())
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Some task", "p1")
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if strings.Contains(out, "comments") {
+		t.Errorf("expected no 'comments' section when there are none, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_CommentsAPIError_StillShowsDescription(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix bug', 'p1', date('now', '-3 days'), 'See the ticket for context')`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "See the ticket for context") {
+		t.Errorf("expected description shown even when comments API fails, got: %q", out)
+	}
+	if strings.Contains(out, "comments") {
+		t.Errorf("expected comments section omitted on API error, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_DoesNotRepeatProjectInV(t *testing.T) {
+	env := newTestEnv(t, emptyComments())
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Some task", "p1")
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	// "Work" appears once in the header; count occurrences to confirm v doesn't repeat it
+	if count := strings.Count(out, "Work"); count != 1 {
+		t.Errorf("expected 'Work' exactly once (in header, not repeated in v), got %d occurrences: %q", count, out)
 	}
 }
 
@@ -285,6 +430,7 @@ func TestOverdue_ViewAction_DoesNotAdvance(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		}
 	})
+	mux.HandleFunc("/comments", pageResponse([]todoist.Comment{}))
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
 	seedOverdueTask(t, env, "t1", "Fix login bug", "p1")
@@ -313,27 +459,6 @@ func TestOverdue_ViewAction_DoesNotAdvance(t *testing.T) {
 		`SELECT is_completed FROM tasks WHERE id='t2'`).Scan(&completed)
 	if completed != 0 {
 		t.Error("expected t2 to remain incomplete (only skipped)")
-	}
-}
-
-func TestOverdue_ViewAction_NoDescriptionOrLabels_ShowsProjectOnly(t *testing.T) {
-	env := newTestEnv(t, nil)
-	hSeedProject(t, env.conn, "p1", "Work")
-	seedOverdueTask(t, env, "t1", "Generic task", "p1")
-	setStdin(t, "v\ns\n")
-
-	out, err := runCmd(t, "overdue")
-	if err != nil {
-		t.Fatalf("overdue: %v", err)
-	}
-	if !strings.Contains(out, "Work") {
-		t.Errorf("expected project shown even with no description/labels, got: %q", out)
-	}
-	if strings.Contains(out, "desc") {
-		t.Errorf("expected no desc line when description is empty, got: %q", out)
-	}
-	if strings.Contains(out, "labels") {
-		t.Errorf("expected no labels line when no labels set, got: %q", out)
 	}
 }
 
