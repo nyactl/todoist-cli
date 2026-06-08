@@ -412,6 +412,87 @@ func TestMv_ToProjectWithSection_UnknownSection_Errors(t *testing.T) {
 	}
 }
 
+func TestMv_SectionFlagWithoutProject_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t1", "Buy coffee", "p1", "")
+
+	_, err := runCmd(t, "mv", "Buy coffee", "-s", "Later")
+	if err == nil {
+		t.Fatal("expected error when -s used without -p, got nil")
+	}
+}
+
+func TestMv_ToProject_UnknownTask_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p2", "Personal")
+	// no task seeded
+
+	_, err := runCmd(t, "mv", "ghost-task", "-p", "Personal")
+	if err == nil {
+		t.Fatal("expected error for unknown task with -p, got nil")
+	}
+}
+
+func TestMv_ToProject_OutputFormat(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/task1/move", noopHandler)
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	out, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal")
+	if err != nil {
+		t.Fatalf("mv -p: %v", err)
+	}
+	want := "Buy coffee → Personal"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected output %q, got: %q", want, out)
+	}
+}
+
+func TestMv_ToProjectWithSection_OutputFormat(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/task1/move", noopHandler)
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedSection(t, env.conn, "s2", "Later", "p2", 0)
+	hSeedTask(t, env.conn, "task1", "Buy coffee", "p1", "")
+
+	out, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal", "-s", "Later")
+	if err != nil {
+		t.Fatalf("mv -p -s: %v", err)
+	}
+	want := "Buy coffee → Personal / Later"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected output %q, got: %q", want, out)
+	}
+}
+
+func TestMv_ToProject_UsesCorrectTaskIDInURL(t *testing.T) {
+	var hitPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/move") {
+			hitPath = r.URL.Path
+		}
+		noopHandler(w, r)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Personal")
+	hSeedTask(t, env.conn, "task-abc123", "Buy coffee", "p1", "")
+
+	if _, err := runCmd(t, "mv", "Buy coffee", "-p", "Personal"); err != nil {
+		t.Fatalf("mv -p: %v", err)
+	}
+	if hitPath != "/tasks/task-abc123/move" {
+		t.Errorf("expected API call to /tasks/task-abc123/move, got %q", hitPath)
+	}
+}
+
 func TestMv_ToProject_APIError_ReturnsError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
