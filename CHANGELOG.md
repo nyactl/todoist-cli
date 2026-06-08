@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0] - 2026-06-08
+
+### Features
+
+- Show project/labels in triage header, fetch comments in v
+
+
 ## [1.8.0] - 2026-06-08
 
 ### Features
