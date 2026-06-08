@@ -105,17 +105,14 @@ var overdueCmd = &cobra.Command{
 						continue
 					}
 					conn.ExecContext(ctx, `UPDATE tasks SET due_date=NULL, due_string=? WHERE id=?`, dateStr, t.ID)
-					label := ""
-					if updated.Due != nil {
-						label = updated.Due.Date
+					if updated.Due == nil {
+						fmt.Fprintln(out, "  → due date cleared")
+					} else {
+						label := updated.Due.Date
 						if updated.Due.String != "" && (updated.Due.IsRecurring || updated.Due.String != dateStr) {
 							label = updated.Due.String + "  ·  " + updated.Due.Date
 						}
-					}
-					if label != "" {
 						fmt.Fprintf(out, "  → %s\n", label)
-					} else {
-						fmt.Fprintln(out, "  → rescheduled")
 					}
 					nRescheduled++
 					acted = true

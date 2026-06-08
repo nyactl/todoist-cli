@@ -161,7 +161,7 @@ func TestOverdue_RescheduleAction_RecurringShowsPatternAndDate(t *testing.T) {
 	}
 }
 
-func TestOverdue_RescheduleAction_NoDueInResponse_FallsBackToRescheduled(t *testing.T) {
+func TestOverdue_RescheduleAction_NoDueInResponse_PrintsCleared(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, todoist.Task{ID: "t1"})
@@ -169,14 +169,14 @@ func TestOverdue_RescheduleAction_NoDueInResponse_FallsBackToRescheduled(t *test
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
 	seedOverdueTask(t, env, "t1", "Some task", "p1")
-	setStdin(t, "r tomorrow\n")
+	setStdin(t, "r no date\n")
 
 	out, err := runCmd(t, "overdue")
 	if err != nil {
 		t.Fatalf("overdue: %v", err)
 	}
-	if !strings.Contains(out, "→ rescheduled") {
-		t.Errorf("expected fallback '→ rescheduled' when API returns no due, got: %q", out)
+	if !strings.Contains(out, "due date cleared") {
+		t.Errorf("expected 'due date cleared' when API returns no due, got: %q", out)
 	}
 }
 
