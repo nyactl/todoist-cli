@@ -222,6 +222,121 @@ func TestOverdue_InvalidInputShowsHelp(t *testing.T) {
 	}
 }
 
+func TestOverdue_ViewAction_ShowsProjectAndSection(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix login bug', 'p1', 's1', date('now', '-3 days'))`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Work") {
+		t.Errorf("expected project name in details, got: %q", out)
+	}
+	if !strings.Contains(out, "Backlog") {
+		t.Errorf("expected section name in details, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_ShowsDescription(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix login bug', 'p1', date('now', '-3 days'), 'Check the auth middleware first')`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Check the auth middleware first") {
+		t.Errorf("expected description in details, got: %q", out)
+	}
+	if !strings.Contains(out, "1 skipped") {
+		t.Errorf("expected task skipped after viewing, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_ShowsLabels(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Review PR", "p1")
+	env.conn.ExecContext(context.Background(),
+		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "urgent") {
+		t.Errorf("expected label 'urgent' in details, got: %q", out)
+	}
+}
+
+func TestOverdue_ViewAction_DoesNotAdvance(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/close") {
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Fix login bug", "p1")
+	seedOverdueTask(t, env, "t2", "Write tests", "p1")
+	// v on t1, then d on t1 (not t2), then s on t2
+	setStdin(t, "v\nd\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "1 done") {
+		t.Errorf("expected '1 done' in summary, got: %q", out)
+	}
+	if !strings.Contains(out, "1 skipped") {
+		t.Errorf("expected '1 skipped' in summary, got: %q", out)
+	}
+
+	var completed int
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT is_completed FROM tasks WHERE id='t1'`).Scan(&completed)
+	if completed != 1 {
+		t.Error("expected t1 (not t2) to be marked completed after v then d")
+	}
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT is_completed FROM tasks WHERE id='t2'`).Scan(&completed)
+	if completed != 0 {
+		t.Error("expected t2 to remain incomplete (only skipped)")
+	}
+}
+
+func TestOverdue_ViewAction_NoDescriptionOrLabels_ShowsProjectOnly(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	seedOverdueTask(t, env, "t1", "Generic task", "p1")
+	setStdin(t, "v\ns\n")
+
+	out, err := runCmd(t, "overdue")
+	if err != nil {
+		t.Fatalf("overdue: %v", err)
+	}
+	if !strings.Contains(out, "Work") {
+		t.Errorf("expected project shown even with no description/labels, got: %q", out)
+	}
+	if strings.Contains(out, "desc") {
+		t.Errorf("expected no desc line when description is empty, got: %q", out)
+	}
+	if strings.Contains(out, "labels") {
+		t.Errorf("expected no labels line when no labels set, got: %q", out)
+	}
+}
+
 func TestOverdue_ExcludesFutureTasks(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")

@@ -57,7 +57,7 @@ var overdueCmd = &cobra.Command{
 
 			acted := false
 			for !acted {
-				fmt.Fprintf(out, "  d = done  r <date> = reschedule  s = skip  q = quit\n> ")
+				fmt.Fprintf(out, "  d = done  r <date> = reschedule  s = skip  v = details  q = quit\n> ")
 				if !scanner.Scan() {
 					quit = true
 					acted = true
@@ -96,12 +96,33 @@ var overdueCmd = &cobra.Command{
 					nSkipped++
 					acted = true
 
+				case input == "v":
+					loc := t.ProjectName
+					if t.SectionName != "" {
+						loc += " / " + t.SectionName
+					}
+					if loc != "" {
+						fmt.Fprintf(out, "  project  %s\n", loc)
+					}
+					var desc string
+					conn.QueryRowContext(ctx, `SELECT description FROM tasks WHERE id=?`, t.ID).Scan(&desc)
+					if desc != "" {
+						fmt.Fprintf(out, "  desc     %s\n", desc)
+					}
+					if lbls, _ := tasks.Labels(ctx, conn, t.ID); len(lbls) > 0 {
+						fmt.Fprintf(out, "  labels   %s\n", strings.Join(lbls, ", "))
+					}
+					if t.URL != "" {
+						fmt.Fprintf(out, "  url      %s\n", t.URL)
+					}
+					// acted stays false — reprompt for the same task
+
 				case input == "q":
 					quit = true
 					acted = true
 
 				default:
-					fmt.Fprintln(out, "  ! unknown — try: d, r <date>, s, q")
+					fmt.Fprintln(out, "  ! unknown — try: d, r <date>, s, v, q")
 				}
 			}
 		}
