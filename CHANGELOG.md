@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0] - 2026-06-08
+
+### Features
+
+- Add -p flag to mv for cross-project task moves
+- Add v = details action to overdue triage
+
+
 ## [1.6.0] - 2026-06-07
 
 ### Documentation
