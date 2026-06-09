@@ -95,6 +95,19 @@ func TestSections_ExcludesArchived(t *testing.T) {
 
 // --- sections rm ---
 
+func TestSectionsRm_NoArgs_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	_, err := runCmd(t, "sections", "rm")
+	if err == nil {
+		t.Fatal("expected error when no section name given, got nil")
+	}
+}
+
 func TestSectionsRm_DeletesFromAPIAndCache(t *testing.T) {
 	var deletedID string
 	mux := http.NewServeMux()
