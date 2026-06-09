@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/tasks"
+	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
@@ -47,6 +50,51 @@ var sectionsCmd = &cobra.Command{
 	},
 }
 
+var sectionsRmCmd = &cobra.Command{
+	Use:               "rm <section>",
+	Short:             "Delete a section from the active project",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: addSectionCompleter,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+
+		conn, err := db.Open()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		st, err := loadContext(ctx, conn)
+		if err != nil {
+			return err
+		}
+		if !st.HasProject() {
+			return fmt.Errorf("no project context — run: td cd <project>")
+		}
+
+		sectionID, err := tasks.SectionByName(ctx, conn, args[0], st.ProjectID)
+		if err != nil {
+			return err
+		}
+
+		token, err := config.GetToken()
+		if err != nil {
+			return err
+		}
+
+		client := todoist.New(token)
+		if err := client.DeleteSection(ctx, sectionID); err != nil {
+			return err
+		}
+
+		conn.ExecContext(ctx, `DELETE FROM sections WHERE id = ?`, sectionID)
+
+		fmt.Fprintf(cmd.OutOrStdout(), "deleted: %s\n", args[0])
+		return nil
+	},
+}
+
 func init() {
+	sectionsCmd.AddCommand(sectionsRmCmd)
 	root.AddCommand(sectionsCmd)
 }

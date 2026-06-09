@@ -109,6 +109,7 @@ export TODOIST_TOKEN=your_token_here
 | `projects add <name> --parent <project>` | Create a sub-project |
 | `projects rm <project>` | Delete a project |
 | `sections` | List sections in the active project |
+| `sections rm <section>` | Delete a section from the active project |
 | `labels` | List all labels |
 | `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
 
