@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1] - 2026-06-09
+
+### Features
+
+- Print resolved date after rescheduling in overdue triage
+- Print due date cleared when rescheduling with no date
+
+
 ## [1.9.0] - 2026-06-08
 
 ### Features
