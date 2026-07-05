@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — todoist-cli
 
-Developer guide for AI-assisted work on this codebase. Read this before implementing anything.
+Developer guide for contributors. Read this before implementing anything.
 
 ## Architecture overview
 
