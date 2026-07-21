@@ -72,6 +72,10 @@ type CreateProjectRequest struct {
 	ParentID string `json:"parent_id,omitempty"`
 }
 
+type UpdateProjectRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
 type CreateTaskRequest struct {
 	Content     string   `json:"content"`
 	Description string   `json:"description,omitempty"`

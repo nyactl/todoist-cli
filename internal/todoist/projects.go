@@ -19,6 +19,11 @@ func (c *Client) CreateProject(ctx context.Context, req CreateProjectRequest) (*
 	return &p, c.doJSON(ctx, "POST", "/projects", req, &p)
 }
 
+func (c *Client) UpdateProject(ctx context.Context, id string, req UpdateProjectRequest) (*Project, error) {
+	var p Project
+	return &p, c.doJSON(ctx, "POST", "/projects/"+id, req, &p)
+}
+
 func (c *Client) DeleteProject(ctx context.Context, id string) error {
 	resp, err := c.do(ctx, "DELETE", "/projects/"+id, nil)
 	if err != nil {

@@ -107,6 +107,7 @@ export TODOIST_TOKEN=your_token_here
 | `projects` | List all projects |
 | `projects add <name>` | Create a project |
 | `projects add <name> --parent <project>` | Create a sub-project |
+| `projects mv <project> <new-name>` | Rename a project |
 | `projects rm <project>` | Delete a project — refuses if it still has tasks |
 | `projects rm <project> -f` | Force-delete a project even if it has tasks |
 | `sections` | List sections in the active project |

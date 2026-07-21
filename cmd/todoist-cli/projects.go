@@ -130,6 +130,44 @@ var projectsRmCmd = &cobra.Command{
 	},
 }
 
+var projectsMvCmd = &cobra.Command{
+	Use:               "mv <project> <new-name>",
+	Short:             "Rename a project",
+	Args:              cobra.MinimumNArgs(2),
+	ValidArgsFunction: projectCompleter,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+		newName := strings.Join(args[1:], " ")
+
+		conn, err := db.Open()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		projectID, err := tasks.ProjectByName(ctx, conn, args[0])
+		if err != nil {
+			return err
+		}
+
+		token, err := config.GetToken()
+		if err != nil {
+			return err
+		}
+		client := todoist.New(token)
+
+		proj, err := client.UpdateProject(ctx, projectID, todoist.UpdateProjectRequest{Name: newName})
+		if err != nil {
+			return err
+		}
+
+		conn.ExecContext(ctx, `UPDATE projects SET name = ? WHERE id = ?`, proj.Name, projectID)
+
+		fmt.Fprintf(cmd.OutOrStdout(), "renamed: %s -> %s\n", args[0], proj.Name)
+		return nil
+	},
+}
+
 func printProjects(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, name FROM projects WHERE is_archived=0 ORDER BY ord`)
@@ -153,5 +191,6 @@ func init() {
 	projectsRmCmd.Flags().BoolVarP(&projectsRmForce, "force", "f", false, "delete even if the project still has tasks")
 	projectsCmd.AddCommand(projectsAddCmd)
 	projectsCmd.AddCommand(projectsRmCmd)
+	projectsCmd.AddCommand(projectsMvCmd)
 	root.AddCommand(projectsCmd)
 }

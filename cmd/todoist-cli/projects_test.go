@@ -312,6 +312,106 @@ func TestProjectsRm_NonEmpty_DeletesWithForce(t *testing.T) {
 	}
 }
 
+// --- projects mv (rename) ---
+
+func TestProjectsMv_RenamesInAPIAndCache(t *testing.T) {
+	var gotBody todoist.UpdateProjectRequest
+	var gotID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		gotID = strings.TrimPrefix(r.URL.Path, "/projects/")
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		writeJSON(w, todoist.Project{ID: gotID, Name: gotBody.Name})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "proj-ren", "Dev (new)")
+
+	out, err := runCmd(t, "projects", "mv", "Dev (new)", "Dev")
+	if err != nil {
+		t.Fatalf("projects mv: %v", err)
+	}
+	if gotID != "proj-ren" {
+		t.Errorf("expected POST to /projects/proj-ren, got %q", gotID)
+	}
+	if gotBody.Name != "Dev" {
+		t.Errorf("expected new name 'Dev' sent to API, got %q", gotBody.Name)
+	}
+	if !strings.Contains(out, "renamed: Dev (new) -> Dev") {
+		t.Errorf("expected rename confirmation in output, got: %q", out)
+	}
+
+	var cachedName string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT name FROM projects WHERE id = 'proj-ren'`).Scan(&cachedName)
+	if cachedName != "Dev" {
+		t.Errorf("expected cached name updated to 'Dev', got %q", cachedName)
+	}
+}
+
+func TestProjectsMv_MultiWordNewName(t *testing.T) {
+	var gotName string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		var body todoist.UpdateProjectRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		gotName = body.Name
+		writeJSON(w, todoist.Project{ID: "p-mw", Name: body.Name})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p-mw", "Old")
+
+	if _, err := runCmd(t, "projects", "mv", "Old", "Reading", "List"); err != nil {
+		t.Fatalf("projects mv: %v", err)
+	}
+	if gotName != "Reading List" {
+		t.Errorf("expected joined new name 'Reading List', got %q", gotName)
+	}
+}
+
+func TestProjectsMv_UnknownProject_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+
+	_, err := runCmd(t, "projects", "mv", "NoSuchProject", "Whatever")
+	if err == nil {
+		t.Fatal("expected error for unknown project, got nil")
+	}
+}
+
+func TestProjectsMv_MissingNewName_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+
+	_, err := runCmd(t, "projects", "mv", "Work")
+	if err == nil {
+		t.Fatal("expected error when new name is omitted, got nil")
+	}
+}
+
+func TestProjectsMv_APIError_LeavesCacheUnchanged(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p-err", "Original")
+
+	_, err := runCmd(t, "projects", "mv", "Original", "Renamed")
+	if err == nil {
+		t.Fatal("expected error when API returns 400, got nil")
+	}
+
+	var name string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT name FROM projects WHERE id = 'p-err'`).Scan(&name)
+	if name != "Original" {
+		t.Errorf("expected cache name unchanged 'Original' on API failure, got %q", name)
+	}
+}
+
 func TestProjectsRm_APIError_ReturnsError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
