@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0] - 2026-07-21
+
+### Documentation
+
+- Add architecture and contribution guide
+- Fix ARCHITECTURE.md title and description
+
+### Features
+
+- Add sections rm subcommand
+- Guard projects rm against deleting non-empty projects without --force
+
+
 ## [1.9.1] - 2026-06-09
 
 ### Features
@@ -101,27 +114,11 @@
 
 ### Bug Fixes
 
-- Install binary as todoist-cli, no alias
-
-### Documentation
-
-- Add Homebrew install instructions
-- Document --priority flag on add
-
-### Features
-
-- Add Homebrew tap via GoReleaser
-- Add --priority flag to add command
-
-
-## [1.0.0] - 2026-05-20
-
-### Bug Fixes
-
 - Use cd context in add, purge deleted tasks on sync, add --due flag
 - Wrap sync steps in transactions, case-insensitive task content lookup
 - Parallelize sync fetches, substring task lookup, URL fallback in cp
 - Construct task URL from ID instead of relying on API field
+- Install binary as todoist-cli, no alias
 
 ### CI
 
@@ -132,6 +129,8 @@
 
 - Clarify task resolution in README, remove duplicate row
 - Add td open to command table in README
+- Add Homebrew install instructions
+- Document --priority flag on add
 
 ### Features
 
@@ -145,6 +144,8 @@
 - Td sync -p to sync a single project
 - Add td pick for interactive task selection via fzf
 - Add --version flag injected via GoReleaser ldflags
+- Add Homebrew tap via GoReleaser
+- Add --priority flag to add command
 
 ### Refactoring
 
