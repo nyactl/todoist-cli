@@ -14,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectsAddParent string
+var (
+	projectsAddParent string
+	projectsRmForce   bool
+)
 
 var projectsCmd = &cobra.Command{
 	Use:               "projects",
@@ -99,6 +102,17 @@ var projectsRmCmd = &cobra.Command{
 			return err
 		}
 
+		if !projectsRmForce {
+			var n int
+			if err := conn.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM tasks WHERE project_id = ?`, projectID).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 {
+				return fmt.Errorf("project %q is not empty (%d tasks) — use --force to delete anyway", args[0], n)
+			}
+		}
+
 		token, err := config.GetToken()
 		if err != nil {
 			return err
@@ -136,6 +150,7 @@ func printProjects(ctx context.Context, db *sql.DB) error {
 func init() {
 	projectsAddCmd.Flags().StringVar(&projectsAddParent, "parent", "", "parent project name — creates a sub-project")
 	projectsAddCmd.RegisterFlagCompletionFunc("parent", projectCompleter)
+	projectsRmCmd.Flags().BoolVarP(&projectsRmForce, "force", "f", false, "delete even if the project still has tasks")
 	projectsCmd.AddCommand(projectsAddCmd)
 	projectsCmd.AddCommand(projectsRmCmd)
 	root.AddCommand(projectsCmd)

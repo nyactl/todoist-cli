@@ -248,6 +248,70 @@ func TestProjectsRm_UnknownProject_Errors(t *testing.T) {
 	}
 }
 
+func TestProjectsRm_NonEmpty_RefusesWithoutForce(t *testing.T) {
+	var called bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "proj-full", "Work")
+	hSeedTask(t, env.conn, "t1", "Ship it", "proj-full", "")
+
+	_, err := runCmd(t, "projects", "rm", "Work")
+	if err == nil {
+		t.Fatal("expected error deleting non-empty project without --force, got nil")
+	}
+	if !strings.Contains(err.Error(), "not empty") {
+		t.Errorf("expected 'not empty' in error, got: %v", err)
+	}
+	if called {
+		t.Error("expected no DELETE call to API when refusing non-empty project")
+	}
+
+	var n int
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM projects WHERE id = 'proj-full'`).Scan(&n)
+	if n != 1 {
+		t.Error("expected project to remain in cache when deletion is refused")
+	}
+}
+
+func TestProjectsRm_NonEmpty_DeletesWithForce(t *testing.T) {
+	var deletedID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.NotFound(w, r)
+			return
+		}
+		deletedID = strings.TrimPrefix(r.URL.Path, "/projects/")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "proj-force", "Work")
+	hSeedTask(t, env.conn, "t1", "Ship it", "proj-force", "")
+
+	out, err := runCmd(t, "projects", "rm", "Work", "--force")
+	if err != nil {
+		t.Fatalf("projects rm --force: %v", err)
+	}
+	if deletedID != "proj-force" {
+		t.Errorf("expected DELETE called with 'proj-force', got %q", deletedID)
+	}
+	if !strings.Contains(out, "deleted: Work") {
+		t.Errorf("expected 'deleted: Work' in output, got: %q", out)
+	}
+
+	var n int
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM projects WHERE id = 'proj-force'`).Scan(&n)
+	if n != 0 {
+		t.Error("expected project removed from cache after forced delete")
+	}
+}
+
 func TestProjectsRm_APIError_ReturnsError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
