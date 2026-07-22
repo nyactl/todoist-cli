@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0] - 2026-07-21
+
+### Features
+
+- Add projects mv to rename a project
+
+
 ## [1.10.0] - 2026-07-21
 
 ### Documentation
