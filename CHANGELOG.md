@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.1] - 2026-08-10
+
+### Bug Fixes
+
+- Error on ambiguous project name instead of silently picking the first
+
+### Documentation
+
+- Document projects rm cascade and sync FK known limitations
+
+
 ## [1.11.0] - 2026-07-21
 
 ### Features
