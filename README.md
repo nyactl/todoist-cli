@@ -108,7 +108,7 @@ export TODOIST_TOKEN=your_token_here
 | `projects add <name>` | Create a project |
 | `projects add <name> --parent <project>` | Create a sub-project |
 | `projects mv <project> <new-name>` | Rename a project |
-| `projects rm <project>` | Delete a project — refuses if it still has tasks |
+| `projects rm <project>` | Delete a project — refuses if it still has tasks ([does not check sub-projects](#known-limitations)) |
 | `projects rm <project> -f` | Force-delete a project even if it has tasks |
 | `sections` | List sections in the active project |
 | `sections rm <section>` | Delete a section from the active project |
@@ -192,6 +192,12 @@ _todoist_bg_sync() {
 }
 add-zsh-hook precmd _todoist_bg_sync
 ```
+
+## Known limitations
+
+**`projects rm` can silently delete tasks in sub-projects.** This tool has no concept of project hierarchy — it doesn't store or read `parent_id` for projects, so it can't see nesting at all. Todoist's own project-deletion behavior cascades: deleting a project deletes every task in any sub-project nested under it, while the sub-projects themselves survive as orphaned, top-level projects. Since `projects rm`'s empty-check only counts tasks directly in the target project (not descendants), it will happily delete a project that looks empty even if its sub-projects are full of tasks — with no warning. If a project you're deleting might have sub-projects, check for them in the Todoist app first. Tracked in [#11](https://github.com/nyactl/todoist-cli/issues/11).
+
+**`sync` can abort permanently if a deleted task lingers in the API's list response.** Todoist's `GET /tasks` list endpoint has been observed returning a task for several minutes after it was deleted (confirmed gone via direct `GET /tasks/{id}` lookups in the same window). If that task's project was also removed from the local cache in the meantime, `sync` fails with a `FOREIGN KEY constraint failed` error and stops entirely — leaving the cache unable to sync until repaired by hand. This is most likely to happen right after the cascade-delete scenario above. Tracked in [#12](https://github.com/nyactl/todoist-cli/issues/12).
 
 ## Data
 
