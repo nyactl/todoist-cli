@@ -105,6 +105,14 @@ func hSeedProject(t *testing.T, conn *sql.DB, id, name string) {
 	}
 }
 
+func hSeedSubproject(t *testing.T, conn *sql.DB, id, name, parentID string) {
+	t.Helper()
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO projects (id, name, parent_id) VALUES (?, ?, ?)`, id, name, parentID); err != nil {
+		t.Fatalf("seedSubproject: %v", err)
+	}
+}
+
 func hSeedSection(t *testing.T, conn *sql.DB, id, name, projectID string, ord int) {
 	t.Helper()
 	if _, err := conn.ExecContext(context.Background(),

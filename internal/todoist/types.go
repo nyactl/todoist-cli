@@ -39,6 +39,7 @@ type Project struct {
 	Name       string `json:"name"`
 	Color      string `json:"color"`
 	Order      int    `json:"order"`
+	ParentID   string `json:"parent_id"`
 	IsFavorite bool   `json:"is_favorite"`
 	IsArchived bool   `json:"is_archived"`
 	ViewStyle  string `json:"view_style"`

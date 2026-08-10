@@ -312,6 +312,77 @@ func TestProjectsRm_NonEmpty_DeletesWithForce(t *testing.T) {
 	}
 }
 
+func TestProjectsRm_SubprojectTasks_RefusedEvenWhenTargetEmpty(t *testing.T) {
+	var called bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	// Parent with zero direct tasks, but a sub-project full of them — the
+	// exact silent-data-loss case from #11.
+	hSeedProject(t, env.conn, "parent", "Dev")
+	hSeedSubproject(t, env.conn, "child", "Immich", "parent")
+	hSeedTask(t, env.conn, "t1", "task a", "child", "")
+	hSeedTask(t, env.conn, "t2", "task b", "child", "")
+
+	_, err := runCmd(t, "projects", "rm", "Dev")
+	if err == nil {
+		t.Fatal("expected refusal deleting a parent whose sub-project has tasks, got nil")
+	}
+	if !strings.Contains(err.Error(), "sub-project") {
+		t.Errorf("expected error to mention sub-projects, got: %v", err)
+	}
+	if called {
+		t.Error("expected no DELETE call to API when refusing cascade delete")
+	}
+	var n int
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM projects WHERE id = 'parent'`).Scan(&n)
+	if n != 1 {
+		t.Error("expected parent project to remain in cache when refused")
+	}
+}
+
+func TestProjectsRm_EmptySubprojects_Allowed(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "parent", "Dev")
+	hSeedSubproject(t, env.conn, "child", "Empty", "parent")
+
+	if _, err := runCmd(t, "projects", "rm", "Dev"); err != nil {
+		t.Fatalf("expected empty parent+sub-projects to delete without --force, got: %v", err)
+	}
+}
+
+func TestProjectsRm_SubprojectTasks_DeletesWithForce(t *testing.T) {
+	var deletedID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.NotFound(w, r)
+			return
+		}
+		deletedID = strings.TrimPrefix(r.URL.Path, "/projects/")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "parent", "Dev")
+	hSeedSubproject(t, env.conn, "child", "Immich", "parent")
+	hSeedTask(t, env.conn, "t1", "task a", "child", "")
+
+	if _, err := runCmd(t, "projects", "rm", "Dev", "--force"); err != nil {
+		t.Fatalf("projects rm --force: %v", err)
+	}
+	if deletedID != "parent" {
+		t.Errorf("expected DELETE called with 'parent', got %q", deletedID)
+	}
+}
+
 // --- projects mv (rename) ---
 
 func TestProjectsMv_RenamesInAPIAndCache(t *testing.T) {

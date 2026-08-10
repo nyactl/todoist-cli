@@ -69,13 +69,14 @@ var projectsAddCmd = &cobra.Command{
 		}
 
 		conn.ExecContext(ctx,
-			`INSERT INTO projects(id,name,color,ord,is_archived,is_favorite,view_style)
-			 VALUES(?,?,?,?,?,?,?)
+			`INSERT INTO projects(id,name,color,ord,parent_id,is_archived,is_favorite,view_style)
+			 VALUES(?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   name=excluded.name, color=excluded.color, ord=excluded.ord,
+			   parent_id=excluded.parent_id,
 			   is_archived=excluded.is_archived, is_favorite=excluded.is_favorite,
 			   view_style=excluded.view_style`,
-			proj.ID, proj.Name, proj.Color, proj.Order,
+			proj.ID, proj.Name, proj.Color, proj.Order, nullIfEmpty(proj.ParentID),
 			boolToInt(proj.IsArchived), boolToInt(proj.IsFavorite), proj.ViewStyle)
 
 		fmt.Println(proj.ID)
@@ -103,13 +104,31 @@ var projectsRmCmd = &cobra.Command{
 		}
 
 		if !projectsRmForce {
-			var n int
-			if err := conn.QueryRowContext(ctx,
-				`SELECT COUNT(*) FROM tasks WHERE project_id = ?`, projectID).Scan(&n); err != nil {
+			// Deleting a project cascades on Todoist's side: tasks in any nested
+			// sub-project are permanently deleted too. Count the whole subtree,
+			// not just direct tasks, so an "empty-looking" parent can't silently
+			// wipe out its sub-projects' tasks.
+			var subprojects, directTasks, subtreeTasks int
+			err := conn.QueryRowContext(ctx, `
+				WITH RECURSIVE subtree(id) AS (
+					SELECT id FROM projects WHERE id = ?
+					UNION ALL
+					SELECT p.id FROM projects p JOIN subtree s ON p.parent_id = s.id
+				)
+				SELECT
+					(SELECT COUNT(*) FROM projects WHERE parent_id = ?),
+					(SELECT COUNT(*) FROM tasks WHERE project_id = ?),
+					(SELECT COUNT(*) FROM tasks WHERE project_id IN (SELECT id FROM subtree))`,
+				projectID, projectID, projectID).Scan(&subprojects, &directTasks, &subtreeTasks)
+			if err != nil {
 				return err
 			}
-			if n > 0 {
-				return fmt.Errorf("project %q is not empty (%d tasks) — use --force to delete anyway", args[0], n)
+			if subtreeTasks > 0 {
+				if subprojects > 0 {
+					return fmt.Errorf("project %q is not empty (%d tasks total; %d in %d sub-project(s) that Todoist would permanently delete) — use --force to delete anyway",
+						args[0], subtreeTasks, subtreeTasks-directTasks, subprojects)
+				}
+				return fmt.Errorf("project %q is not empty (%d tasks) — use --force to delete anyway", args[0], subtreeTasks)
 			}
 		}
 

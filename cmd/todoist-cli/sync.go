@@ -243,13 +243,14 @@ func writeProjects(ctx context.Context, db *sql.DB, items []todoist.Project) (in
 	defer tx.Rollback()
 	for _, p := range items {
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO projects(id,name,color,ord,is_archived,is_favorite,view_style)
-			 VALUES(?,?,?,?,?,?,?)
+			`INSERT INTO projects(id,name,color,ord,parent_id,is_archived,is_favorite,view_style)
+			 VALUES(?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   name=excluded.name, color=excluded.color, ord=excluded.ord,
+			   parent_id=excluded.parent_id,
 			   is_archived=excluded.is_archived, is_favorite=excluded.is_favorite,
 			   view_style=excluded.view_style`,
-			p.ID, p.Name, p.Color, p.Order,
+			p.ID, p.Name, p.Color, p.Order, nullIfEmpty(p.ParentID),
 			boolToInt(p.IsArchived), boolToInt(p.IsFavorite), p.ViewStyle)
 		if err != nil {
 			return 0, err
@@ -448,6 +449,15 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullIfEmpty returns nil for an empty string so it stores as SQL NULL rather
+// than '', keeping top-level projects distinguishable from a real parent_id.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func init() {

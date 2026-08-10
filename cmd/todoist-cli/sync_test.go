@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strings"
 	"testing"
@@ -41,6 +42,36 @@ func TestSync_PopulatesDB(t *testing.T) {
 	}
 	if content != "Buy milk" {
 		t.Errorf("expected content 'Buy milk', got %q", content)
+	}
+}
+
+func TestSync_PersistsProjectParentID(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects", pageResponse([]todoist.Project{
+		{ID: "parent", Name: "Dev"},
+		{ID: "child", Name: "Immich", ParentID: "parent"},
+	}))
+	mux.HandleFunc("/labels", pageResponse([]todoist.Label{}))
+	mux.HandleFunc("/sections", pageResponse([]todoist.Section{}))
+	mux.HandleFunc("/tasks", pageResponse([]todoist.Task{}))
+	env := newTestEnv(t, mux)
+
+	if _, err := runCmd(t, "sync"); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var parent sql.NullString
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT parent_id FROM projects WHERE id = 'child'`).Scan(&parent)
+	if !parent.Valid || parent.String != "parent" {
+		t.Errorf("expected child.parent_id = 'parent', got %v", parent)
+	}
+	// top-level project stores NULL, not ''
+	var top sql.NullString
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT parent_id FROM projects WHERE id = 'parent'`).Scan(&top)
+	if top.Valid {
+		t.Errorf("expected top-level parent_id NULL, got %q", top.String)
 	}
 }
 
