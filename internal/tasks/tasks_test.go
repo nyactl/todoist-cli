@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nyactl/todoist-cli/internal/db"
@@ -75,6 +76,40 @@ func TestProjectByName_NotFound(t *testing.T) {
 	_, err := tasks.ProjectByName(context.Background(), conn, "NoSuchProject")
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestProjectByName_AmbiguousName_Errors(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "dev-old", "Dev")
+	seedProject(t, conn, "dev-new", "Dev")
+
+	_, err := tasks.ProjectByName(context.Background(), conn, "Dev")
+	if err == nil {
+		t.Fatal("expected ambiguity error for colliding project names, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("expected 'ambiguous' in error, got: %v", err)
+	}
+	// Both colliding IDs must be surfaced so the user can disambiguate.
+	if !strings.Contains(err.Error(), "dev-old") || !strings.Contains(err.Error(), "dev-new") {
+		t.Errorf("expected both IDs in error, got: %v", err)
+	}
+}
+
+func TestProjectByName_ExactID_ResolvesPastCollision(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "dev-old", "Dev")
+	seedProject(t, conn, "dev-new", "Dev")
+
+	// Passing an ID is the escape hatch — it must resolve even when the
+	// shared name is ambiguous.
+	id, err := tasks.ProjectByName(context.Background(), conn, "dev-new")
+	if err != nil {
+		t.Fatalf("unexpected error resolving by ID: %v", err)
+	}
+	if id != "dev-new" {
+		t.Errorf("got id %q, want %q", id, "dev-new")
 	}
 }
 

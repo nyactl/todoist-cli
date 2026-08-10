@@ -191,12 +191,46 @@ func SectionByName(ctx context.Context, db *sql.DB, name, projectID string) (id 
 }
 
 func ProjectByName(ctx context.Context, db *sql.DB, name string) (id string, err error) {
+	// Exact ID match first — the unambiguous escape hatch when names collide.
 	err = db.QueryRowContext(ctx,
-		`SELECT id FROM projects WHERE name = ?`, name).Scan(&id)
-	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("project %q not found in local cache — run: todoist-cli sync", name)
+		`SELECT id FROM projects WHERE id = ?`, name).Scan(&id)
+	if err == nil {
+		return id, nil
 	}
-	return id, err
+	if err != sql.ErrNoRows {
+		return "", err
+	}
+
+	// Resolve by exact name. Todoist does not enforce unique names, so a
+	// collision must be a loud error, not a silent pick of the first row.
+	rows, err := db.QueryContext(ctx,
+		`SELECT id FROM projects WHERE name = ?`, name)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			return "", err
+		}
+		ids = append(ids, pid)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	switch len(ids) {
+	case 0:
+		return "", fmt.Errorf("project %q not found in local cache — run: todoist-cli sync", name)
+	case 1:
+		return ids[0], nil
+	default:
+		return "", fmt.Errorf("project %q is ambiguous — %d projects share this name; pass the project ID instead (see: todoist-cli projects): %s",
+			name, len(ids), strings.Join(ids, ", "))
+	}
 }
 
 func query(ctx context.Context, q *sql.DB, sql string, args ...any) ([]Task, error) {
