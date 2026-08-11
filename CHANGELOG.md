@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0] - 2026-08-10
+
+### Bug Fixes
+
+- Projects rm checks sub-project tasks to prevent cascade data loss
+
+
 ## [1.11.1] - 2026-08-10
 
 ### Bug Fixes
@@ -132,23 +139,64 @@
 
 ### Bug Fixes
 
+- Install binary as todoist-cli, no alias
+
+### Documentation
+
+- Add Homebrew install instructions
+- Document --priority flag on add
+
+### Features
+
+- Add Homebrew tap via GoReleaser
+- Add --priority flag to add command
+
+
+## [1.0.0] - 2026-05-20
+
+### Documentation
+
+- Add td open to command table in README
+
+### Features
+
+- Add --version flag injected via GoReleaser ldflags
+
+
+## [0.4.0] - 2026-05-19
+
+### CI
+
+- Opt into Node.js 24 for GitHub Actions runners
+
+### Features
+
+- Add td pick for interactive task selection via fzf
+
+
+## [0.3.0] - 2026-05-19
+
+### Features
+
+- Td sync -p to sync a single project
+
+
+## [0.2.0] - 2026-05-19
+
+### Bug Fixes
+
 - Use cd context in add, purge deleted tasks on sync, add --due flag
 - Wrap sync steps in transactions, case-insensitive task content lookup
 - Parallelize sync fetches, substring task lookup, URL fallback in cp
 - Construct task URL from ID instead of relying on API field
-- Install binary as todoist-cli, no alias
 
 ### CI
 
 - Add GitHub Actions CI and GoReleaser release workflow
-- Opt into Node.js 24 for GitHub Actions runners
 
 ### Documentation
 
 - Clarify task resolution in README, remove duplicate row
-- Add td open to command table in README
-- Add Homebrew install instructions
-- Document --priority flag on add
 
 ### Features
 
@@ -159,11 +207,6 @@
 - Add td sections command to list sections in active project
 - Add td edit command for partial task updates
 - Add td cp command to copy task URL to clipboard
-- Td sync -p to sync a single project
-- Add td pick for interactive task selection via fzf
-- Add --version flag injected via GoReleaser ldflags
-- Add Homebrew tap via GoReleaser
-- Add --priority flag to add command
 
 ### Refactoring
 
