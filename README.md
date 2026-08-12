@@ -122,6 +122,10 @@ export TODOIST_TOKEN=your_token_here
 
 `today`, `week`, `month`, `year`, `Nd`, `Nw`, `Nm` — e.g. `7d`, `2w`, `3m`
 
+### Incremental label edits
+
+`edit --add-label` / `--remove-label` compute the new label set from the **local cache**, then send it as a full replace. If the cache is behind the server (a label was added from another client since your last `sync`), that label isn't in the cache and would be dropped. Run `todoist-cli sync` first if you're unsure the cache is current. `edit -l` replaces the whole set from your input and is unaffected.
+
 ## Shell integration
 
 ### Composing with `pick`

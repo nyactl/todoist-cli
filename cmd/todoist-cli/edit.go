@@ -147,7 +147,7 @@ func init() {
 	editCmd.Flags().IntVarP(&editPriority, "priority", "P", 0, "priority 1–4 (1=normal, 4=urgent)")
 	editCmd.Flags().StringVarP(&editDescription, "description", "d", "", "replace description")
 	editCmd.Flags().StringArrayVarP(&editLabels, "label", "l", nil, "replace labels (repeatable: -l urgent -l work)")
-	editCmd.Flags().StringArrayVar(&editAddLabels, "add-label", nil, "add labels, keeping existing ones (repeatable)")
+	editCmd.Flags().StringArrayVar(&editAddLabels, "add-label", nil, "add labels, keeping existing cached ones (repeatable; run sync first if unsure)")
 	editCmd.Flags().StringArrayVar(&editRemoveLabels, "remove-label", nil, "remove labels, keeping the rest (repeatable)")
 	editCmd.Flags().StringVarP(&editProject, "project", "p", "", "move task to a different project")
 	editCmd.RegisterFlagCompletionFunc("project", projectCompleter)
