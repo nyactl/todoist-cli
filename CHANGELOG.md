@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0] - 2026-08-12
+
+### Features
+
+- Add edit --add-label and --remove-label for incremental label changes
+
+
 ## [1.12.2] - 2026-08-12
 
 ### Bug Fixes
