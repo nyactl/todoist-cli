@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	lsDone     string
-	lsLabels   []string
-	lsBoard    bool
-	lsPriority int
+	lsDone      string
+	lsLabels    []string
+	lsBoard     bool
+	lsPriority  int
+	lsRecursive bool
 )
 
 var lsCmd = &cobra.Command{
@@ -29,6 +30,9 @@ var lsCmd = &cobra.Command{
 	ValidArgsFunction: cobra.NoFileCompletions,
 	Long: `List tasks. Without a project context shows today's and overdue tasks across all projects.
 With a context (set via cd) shows all active tasks in that project by section.
+
+-r/--recursive additionally includes tasks from sub-projects of the active project,
+grouped by project. Only affects the with-context view.
 
 -l/--label searches all active tasks regardless of due date (account-wide when no
 context is set, or within the active project). It is not limited to the agenda view.
@@ -41,6 +45,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		}
 		if lsPriority != 0 && (lsPriority < 1 || lsPriority > 4) {
 			return fmt.Errorf("priority must be between 1 and 4")
+		}
+		if lsRecursive && lsBoard {
+			return fmt.Errorf("--recursive and --board cannot be combined")
 		}
 		conn, err := db.Open()
 		if err != nil {
@@ -73,7 +80,12 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		}
 
 		if st.HasProject() {
-			ts, err := tasks.ByProject(ctx, conn, st.ProjectID)
+			var ts []tasks.Task
+			if lsRecursive {
+				ts, err = tasks.BySubtree(ctx, conn, st.ProjectID)
+			} else {
+				ts, err = tasks.ByProject(ctx, conn, st.ProjectID)
+			}
 			if err != nil {
 				return err
 			}
@@ -82,9 +94,14 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 				fmt.Println("no tasks")
 				return nil
 			}
-			if lsBoard {
+			switch {
+			case lsRecursive:
+				// Tasks span multiple projects — group by project so the
+				// wider view stays legible.
+				printByProject(ts)
+			case lsBoard:
 				printBoard(ts)
-			} else {
+			default:
 				printBySection(ts)
 			}
 		} else {
@@ -408,7 +425,6 @@ func periodCompleter(cmd *cobra.Command, args []string, toComplete string) ([]st
 		cobra.ShellCompDirectiveNoFileComp
 }
 
-
 func taskCompleter(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -538,6 +554,7 @@ func init() {
 	lsCmd.Flags().StringArrayVarP(&lsLabels, "label", "l", nil, "filter by label (repeatable, AND logic)")
 	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
 	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
+	lsCmd.Flags().BoolVarP(&lsRecursive, "recursive", "r", false, "include tasks from sub-projects of the active project, grouped by project")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(lsCmd)

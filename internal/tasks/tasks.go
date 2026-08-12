@@ -52,6 +52,24 @@ func ByProject(ctx context.Context, db *sql.DB, projectID string) ([]Task, error
 		projectID)
 }
 
+// BySubtree returns incomplete top-level tasks in the given project and every
+// project nested beneath it (recursively via parent_id). Tasks are ordered so
+// that grouping by project — the project itself first, then descendants by
+// project order — stays deterministic.
+func BySubtree(ctx context.Context, db *sql.DB, projectID string) ([]Task, error) {
+	return query(ctx, db,
+		`WITH RECURSIVE subtree(id) AS (
+			SELECT id FROM projects WHERE id = ?
+			UNION ALL
+			SELECT pp.id FROM projects pp JOIN subtree ON pp.parent_id = subtree.id
+		)`+selectCols+`
+		WHERE t.is_completed = 0
+		  AND t.project_id IN (SELECT id FROM subtree)
+		  AND (t.parent_id IS NULL OR t.parent_id = '')
+		ORDER BY p.ord, COALESCE(s.ord, 0), t.ord`,
+		projectID)
+}
+
 func ByLabels(ctx context.Context, db *sql.DB, labelNames []string, projectID string) ([]Task, error) {
 	if len(labelNames) == 0 {
 		return nil, fmt.Errorf("at least one label required")

@@ -78,6 +78,7 @@ export TODOIST_TOKEN=your_token_here
 | `sync -p <project>` | Sync only one project (faster targeted sync) |
 | `ls` | List today's and overdue tasks; or all tasks in active project grouped by section |
 | `ls -b` | Board view — sections as side-by-side columns |
+| `ls -r` | Include tasks from sub-projects of the active project, grouped by project |
 | `ls -d [period]` | List completed tasks (live API call) |
 | `ls -l <label>` | Filter by label across all active tasks regardless of due date (repeatable, AND logic) |
 | `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |

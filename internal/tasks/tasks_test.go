@@ -205,6 +205,127 @@ func TestByProject_ExcludesCompleted(t *testing.T) {
 	}
 }
 
+// BySubtree
+
+// seedNestedProject inserts a project with an explicit ord and optional parent.
+func seedNestedProject(t *testing.T, conn *sql.DB, id, name string, ord int, parentID any) {
+	t.Helper()
+	if _, err := conn.Exec(
+		`INSERT INTO projects (id, name, ord, parent_id) VALUES (?, ?, ?, ?)`,
+		id, name, ord, parentID); err != nil {
+		t.Fatalf("seedNestedProject: %v", err)
+	}
+}
+
+func TestBySubtree_IncludesNestedDescendants(t *testing.T) {
+	conn := openTestDB(t)
+	// Dev > Frontend > Widgets, plus an unrelated Personal project.
+	seedNestedProject(t, conn, "p1", "Dev", 0, nil)
+	seedNestedProject(t, conn, "c1", "Frontend", 1, "p1")
+	seedNestedProject(t, conn, "g1", "Widgets", 2, "c1")
+	seedNestedProject(t, conn, "sib", "Personal", 3, nil)
+	seedTask(t, conn, "t-dev", "in dev", "p1", "")
+	seedTask(t, conn, "t-fe", "in frontend", "c1", "")
+	seedTask(t, conn, "t-w", "in widgets", "g1", "")
+	seedTask(t, conn, "t-sib", "in personal", "sib", "")
+
+	ts, err := tasks.BySubtree(context.Background(), conn, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := map[string]bool{}
+	for _, x := range ts {
+		got[x.Content] = true
+	}
+	for _, want := range []string{"in dev", "in frontend", "in widgets"} {
+		if !got[want] {
+			t.Errorf("expected %q in subtree result", want)
+		}
+	}
+	if got["in personal"] {
+		t.Error("task from an unrelated project must not appear")
+	}
+	if len(ts) != 3 {
+		t.Errorf("expected 3 tasks in subtree, got %d", len(ts))
+	}
+}
+
+func TestBySubtree_LeafDoesNotClimbToParent(t *testing.T) {
+	conn := openTestDB(t)
+	seedNestedProject(t, conn, "p1", "Dev", 0, nil)
+	seedNestedProject(t, conn, "c1", "Frontend", 1, "p1")
+	seedNestedProject(t, conn, "g1", "Widgets", 2, "c1")
+	seedTask(t, conn, "t-dev", "in dev", "p1", "")
+	seedTask(t, conn, "t-fe", "in frontend", "c1", "")
+	seedTask(t, conn, "t-w", "in widgets", "g1", "")
+
+	// Starting at the middle node returns it and its descendant, never the parent.
+	ts, err := tasks.BySubtree(context.Background(), conn, "c1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := map[string]bool{}
+	for _, x := range ts {
+		got[x.Content] = true
+	}
+	if !got["in frontend"] || !got["in widgets"] {
+		t.Errorf("expected frontend + widgets, got %v", got)
+	}
+	if got["in dev"] {
+		t.Error("subtree must not climb up to the parent project")
+	}
+	if len(ts) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(ts))
+	}
+}
+
+func TestBySubtree_ExcludesCompletedAndSubtasks(t *testing.T) {
+	conn := openTestDB(t)
+	seedNestedProject(t, conn, "p1", "Dev", 0, nil)
+	seedNestedProject(t, conn, "c1", "Frontend", 1, "p1")
+	seedTask(t, conn, "t1", "open top-level", "p1", "")
+	seedTask(t, conn, "t2", "open in child", "c1", "")
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, is_completed) VALUES ('t3', 'done in child', 'c1', 1)`)
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id) VALUES ('t4', 'subtask', 'c1', 't2')`)
+
+	ts, err := tasks.BySubtree(context.Background(), conn, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 2 {
+		t.Fatalf("expected 2 tasks (open top-level only), got %d", len(ts))
+	}
+	for _, x := range ts {
+		if x.ID == "t3" || x.ID == "t4" {
+			t.Errorf("completed/subtask leaked into result: %s", x.ID)
+		}
+	}
+}
+
+func TestBySubtree_OrdersParentBeforeChildren(t *testing.T) {
+	conn := openTestDB(t)
+	// Child has a lower ord than the parent, but subtree ordering is by project
+	// ord with the queried project's own ord — parent tasks should still group
+	// first because we seed the parent with the smaller ord.
+	seedNestedProject(t, conn, "p1", "Dev", 0, nil)
+	seedNestedProject(t, conn, "c1", "Frontend", 5, "p1")
+	// Seed child task first to prove ordering isn't insertion order.
+	seedTask(t, conn, "t-fe", "in frontend", "c1", "")
+	seedTask(t, conn, "t-dev", "in dev", "p1", "")
+
+	ts, err := tasks.BySubtree(context.Background(), conn, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 2 {
+		t.Fatalf("expected 2 tasks, got %d", len(ts))
+	}
+	if ts[0].ProjectName != "Dev" || ts[1].ProjectName != "Frontend" {
+		t.Errorf("expected Dev task before Frontend task, got %q then %q",
+			ts[0].ProjectName, ts[1].ProjectName)
+	}
+}
+
 // ByID
 
 func TestByID_ExactIDMatch(t *testing.T) {
