@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1] - 2026-08-12
+
+### Bug Fixes
+
+- Signal project scope when ls --done finds no completed tasks in context
+
+
 ## [1.14.0] - 2026-08-12
 
 ### Documentation
