@@ -75,6 +75,41 @@ func TestSync_PersistsProjectParentID(t *testing.T) {
 	}
 }
 
+func TestSync_SkipsTaskWithMissingProject(t *testing.T) {
+	// A task whose project was deleted server-side keeps appearing in the list
+	// endpoint with a dangling project_id. Previously this FK-violated and
+	// aborted the whole sync permanently (#12).
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects", pageResponse([]todoist.Project{{ID: "p1", Name: "Work"}}))
+	mux.HandleFunc("/labels", pageResponse([]todoist.Label{}))
+	mux.HandleFunc("/sections", pageResponse([]todoist.Section{}))
+	mux.HandleFunc("/tasks", pageResponse([]todoist.Task{
+		{ID: "good", Content: "real", ProjectID: "p1", Priority: 1},
+		{ID: "ghost", Content: "stale", ProjectID: "deleted-proj", Priority: 1},
+	}))
+	env := newTestEnv(t, mux)
+	// A previously-cached copy of the stale task, project already SET NULL by the
+	// cascade delete — sync should drop it, not choke on it.
+	if _, err := env.conn.ExecContext(context.Background(),
+		`INSERT INTO tasks (id, content, project_id) VALUES ('ghost', 'stale', NULL)`); err != nil {
+		t.Fatalf("seed stale task: %v", err)
+	}
+
+	if _, err := runCmd(t, "sync"); err != nil {
+		t.Fatalf("sync must not abort on a task with a missing project: %v", err)
+	}
+
+	var good, ghost int
+	env.conn.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM tasks WHERE id='good'`).Scan(&good)
+	env.conn.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM tasks WHERE id='ghost'`).Scan(&ghost)
+	if good != 1 {
+		t.Errorf("expected good task cached, got count %d", good)
+	}
+	if ghost != 0 {
+		t.Errorf("expected stale task (missing project) dropped, got count %d", ghost)
+	}
+}
+
 func TestSync_PurgesTasksNotInAPI(t *testing.T) {
 	env := newTestEnv(t, emptyAPI())
 	// seed a task that the API will not return

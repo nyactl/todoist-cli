@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -340,7 +341,27 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			}
 		}
 	}
+	written, skipped := 0, 0
 	for _, t := range items {
+		// A task whose project was deleted server-side can keep appearing in the
+		// list endpoint for minutes, with a project_id that no longer resolves.
+		// Inserting it violates the project_id FK and would abort the entire sync
+		// (#12). Skip it — and drop any stale cached copy — rather than failing.
+		if t.ProjectID != "" {
+			var exists bool
+			if err := tx.QueryRowContext(ctx,
+				`SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?)`, t.ProjectID).Scan(&exists); err != nil {
+				return 0, err
+			}
+			if !exists {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, t.ID); err != nil {
+					return 0, err
+				}
+				skipped++
+				continue
+			}
+		}
+
 		var dueDate, dueDatetime, dueString, dueTZ *string
 		dueRecurring := 0
 		if t.Due != nil {
@@ -380,6 +401,7 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 		if err != nil {
 			return 0, fmt.Errorf("task %s: %w", t.ID, err)
 		}
+		written++
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM task_labels WHERE task_id=?`, t.ID); err != nil {
 			return 0, err
@@ -392,7 +414,10 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			}
 		}
 	}
-	return len(items), tx.Commit()
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "sync: skipped %d task(s) whose project no longer exists (deleted server-side)\n", skipped)
+	}
+	return written, tx.Commit()
 }
 
 // upsertTasks inserts or updates a slice of tasks in the local cache.

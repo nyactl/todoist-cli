@@ -193,10 +193,6 @@ _todoist_bg_sync() {
 add-zsh-hook precmd _todoist_bg_sync
 ```
 
-## Known limitations
-
-**`sync` can abort permanently if a deleted task lingers in the API's list response.** Todoist's `GET /tasks` list endpoint has been observed returning a task for several minutes after it was deleted (confirmed gone via direct `GET /tasks/{id}` lookups in the same window). If that task's project was also removed from the local cache in the meantime, `sync` fails with a `FOREIGN KEY constraint failed` error and stops entirely — leaving the cache unable to sync until repaired by hand. Tracked in [#12](https://github.com/nyactl/todoist-cli/issues/12).
-
 ## Data
 
 All data is stored in `~/.local/share/todoist-cli/` (XDG-compliant, override with `$XDG_DATA_HOME`):
