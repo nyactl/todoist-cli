@@ -70,6 +70,8 @@ func runCmd(t *testing.T, args ...string) (string, error) {
 	lsLabels = nil
 	addLabels = nil
 	editLabels = nil
+	editAddLabels = nil
+	editRemoveLabels = nil
 	pickLabels = nil
 
 	// Capture os.Stdout — most print helpers write directly to it.

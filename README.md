@@ -89,6 +89,9 @@ export TODOIST_TOKEN=your_token_here
 | `add --parent <task>` | Create as subtask of the given task |
 | `done <task>` | Mark a task complete |
 | `edit <task>` | Edit content, due date, priority, description, labels or project |
+| `edit <task> -l <label>` | Replace the entire label set (repeatable) |
+| `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
+| `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |
 | `show <task>` | Show full task details, subtasks, and comments |
 | `mv <task> <section>` | Move task to a different section within the current project |
 | `mv <task> -p <project>` | Move task to a different project |
