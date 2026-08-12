@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.12.2] - 2026-08-12
+
+### Bug Fixes
+
+- Translate stale-project API 404 into actionable cache-sync guidance
+
+### Documentation
+
+- Clarify ls -l searches all active tasks regardless of due date
+
+
 ## [1.12.1] - 2026-08-12
 
 ### Bug Fixes
