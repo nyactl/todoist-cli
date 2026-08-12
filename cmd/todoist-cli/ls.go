@@ -154,7 +154,14 @@ func runLsDone(cmd *cobra.Command) error {
 		}
 	}
 	if len(items) == 0 {
-		fmt.Println("nothing completed")
+		// Completed queries are scoped to the active project context. Without a
+		// cue, an empty result reads as "completed tasks are broken" when really
+		// the context just has none (issue #16).
+		if st.HasProject() {
+			fmt.Printf("nothing completed in %q — run 'todoist-cli cd' to clear the context and search all projects\n", st.ProjectName)
+		} else {
+			fmt.Println("nothing completed")
+		}
 		return nil
 	}
 
