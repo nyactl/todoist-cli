@@ -65,7 +65,7 @@ var projectsAddCmd = &cobra.Command{
 
 		proj, err := client.CreateProject(ctx, req)
 		if err != nil {
-			return err
+			return explainStaleProject(err, projectsAddParent)
 		}
 
 		conn.ExecContext(ctx,

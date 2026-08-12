@@ -29,10 +29,30 @@ type Client struct {
 type APIError struct {
 	StatusCode int
 	Body       string
+	// ErrorCode and ErrorTag are parsed from the API's JSON error body when
+	// present (e.g. ErrorCode 478 / ErrorTag "NOT_FOUND" for a missing project).
+	// They are zero-valued when the body is not the expected JSON shape.
+	ErrorCode int
+	ErrorTag  string
 }
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("todoist: HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// newAPIError builds an APIError, best-effort parsing the JSON error body for
+// the Todoist error_code/error_tag fields.
+func newAPIError(statusCode int, body []byte) *APIError {
+	e := &APIError{StatusCode: statusCode, Body: string(body)}
+	var parsed struct {
+		ErrorCode int    `json:"error_code"`
+		ErrorTag  string `json:"error_tag"`
+	}
+	if json.Unmarshal(body, &parsed) == nil {
+		e.ErrorCode = parsed.ErrorCode
+		e.ErrorTag = parsed.ErrorTag
+	}
+	return e
 }
 
 func New(token string) *Client {
@@ -66,7 +86,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (*http.R
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
-		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(b)}
+		return nil, newAPIError(resp.StatusCode, b)
 	}
 	return resp, nil
 }
@@ -100,7 +120,7 @@ func (c *Client) doQuery(ctx context.Context, path string, params url.Values, ou
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return &APIError{StatusCode: resp.StatusCode, Body: string(b)}
+		return newAPIError(resp.StatusCode, b)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

@@ -50,6 +50,7 @@ var addCmd = &cobra.Command{
 			return fmt.Errorf("--parent and --section cannot be used together")
 		}
 		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue, Priority: addPriority}
+		projectLabel := ""
 		if addParent != "" {
 			parent, err := tasks.ByID(ctx, conn, addParent)
 			if err != nil {
@@ -67,6 +68,7 @@ var addCmd = &cobra.Command{
 				return err
 			}
 			req.ProjectID = id
+			projectLabel = addProject
 		} else if addParent == "" {
 			st, err := loadContext(ctx, conn)
 			if err != nil {
@@ -74,7 +76,11 @@ var addCmd = &cobra.Command{
 			}
 			if st.HasProject() {
 				req.ProjectID = st.ProjectID
+				projectLabel = st.ProjectName
 			}
+		}
+		if projectLabel == "" {
+			projectLabel = req.ProjectID
 		}
 		if addSection != "" {
 			if req.ProjectID == "" {
@@ -92,7 +98,7 @@ var addCmd = &cobra.Command{
 
 		task, err := client.CreateTask(ctx, req)
 		if err != nil {
-			return err
+			return explainStaleProject(err, projectLabel)
 		}
 
 		upsertTasks(ctx, conn, []todoist.Task{*task})

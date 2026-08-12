@@ -73,7 +73,7 @@ Cross-project:
 					return err
 				}
 				if err := client.MoveTaskToSection(ctx, task.ID, sectionID); err != nil {
-					return err
+					return explainStaleProject(err, mvProject)
 				}
 				conn.ExecContext(ctx,
 					`UPDATE tasks SET project_id = ?, section_id = ? WHERE id = ?`,
@@ -81,7 +81,7 @@ Cross-project:
 				fmt.Fprintf(cmd.OutOrStdout(), "%s → %s / %s\n", task.Content, mvProject, mvSection)
 			} else {
 				if err := client.MoveTaskToProject(ctx, task.ID, projectID); err != nil {
-					return err
+					return explainStaleProject(err, mvProject)
 				}
 				conn.ExecContext(ctx,
 					`UPDATE tasks SET project_id = ?, section_id = NULL WHERE id = ?`,

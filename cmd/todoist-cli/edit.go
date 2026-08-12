@@ -83,7 +83,7 @@ var editCmd = &cobra.Command{
 				return err
 			}
 			if err := client.MoveTaskToProject(ctx, task.ID, projectID); err != nil {
-				return err
+				return explainStaleProject(err, editProject)
 			}
 			conn.ExecContext(ctx,
 				`UPDATE tasks SET project_id = ?, section_id = NULL WHERE id = ?`,
