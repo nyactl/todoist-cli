@@ -30,6 +30,9 @@ var lsCmd = &cobra.Command{
 	Long: `List tasks. Without a project context shows today's and overdue tasks across all projects.
 With a context (set via cd) shows all active tasks in that project by section.
 
+-l/--label searches all active tasks regardless of due date (account-wide when no
+context is set, or within the active project). It is not limited to the agenda view.
+
 Use --done [period] to review completed tasks (live API call).
 Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.`,
 	RunE: func(cmd *cobra.Command, args []string) error {

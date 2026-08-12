@@ -169,6 +169,37 @@ func TestLs_LabelFilter(t *testing.T) {
 	}
 }
 
+// Regression guard for #13: `ls -l <label>` with no project context must
+// search all active tasks account-wide, including undated ones — not silently
+// scope to the today+overdue agenda.
+func TestLs_LabelFilter_NoContext_FindsUndatedAcrossProjects(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Home")
+	// Two undated tasks carrying the label, in different projects.
+	hSeedTask(t, env.conn, "t1", "wip in work", "p1", "")
+	hSeedTask(t, env.conn, "t2", "wip at home", "p2", "")
+	hSeedTask(t, env.conn, "t3", "unrelated", "p1", "")
+	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'wip')`)
+	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'wip')`)
+
+	// Ensure there is no active project context.
+	if err := state.Save(&state.State{}); err != nil {
+		t.Fatalf("clear context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "-l", "wip")
+	if err != nil {
+		t.Fatalf("ls -l: %v", err)
+	}
+	if !strings.Contains(out, "wip in work") || !strings.Contains(out, "wip at home") {
+		t.Errorf("expected both undated labelled tasks across projects, got: %q", out)
+	}
+	if strings.Contains(out, "unrelated") {
+		t.Errorf("unlabelled task should not appear, got: %q", out)
+	}
+}
+
 func TestLs_PriorityFilter_ShowsOnlyMatchingPriority(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
