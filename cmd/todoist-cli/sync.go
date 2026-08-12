@@ -121,7 +121,9 @@ func runFullSync(cmd *cobra.Command, ctx context.Context, conn *sql.DB, client *
 	for _, s := range []step{
 		{"labels", func(ctx context.Context, db *sql.DB) (int, error) { return writeLabels(ctx, db, fetched.labels) }},
 		{"projects", func(ctx context.Context, db *sql.DB) (int, error) { return writeProjects(ctx, db, fetched.projects) }},
-		{"sections", func(ctx context.Context, db *sql.DB) (int, error) { return writeSections(ctx, db, fetched.sections, "") }},
+		{"sections", func(ctx context.Context, db *sql.DB) (int, error) {
+			return writeSections(ctx, db, fetched.sections, "")
+		}},
 		{"tasks", func(ctx context.Context, db *sql.DB) (int, error) { return writeTasks(ctx, db, fetched.tasks, "") }},
 	} {
 		n, err := s.fn(ctx, conn)
@@ -477,7 +479,7 @@ func boolToInt(b bool) int {
 }
 
 // nullIfEmpty returns nil for an empty string so it stores as SQL NULL rather
-// than '', keeping top-level projects distinguishable from a real parent_id.
+// than an empty string, keeping top-level projects distinguishable from a real parent_id.
 func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil
