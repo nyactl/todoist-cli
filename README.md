@@ -79,6 +79,7 @@ export TODOIST_TOKEN=your_token_here
 | `ls` | List today's and overdue tasks; or all tasks in active project grouped by section |
 | `ls -b` | Board view — sections as side-by-side columns |
 | `ls -r` | Include tasks from sub-projects of the active project, grouped by project |
+| `ls -i` | Prepend the full task ID to each line (for scripting) |
 | `ls -d [period]` | List completed tasks (live API call) |
 | `ls -l <label>` | Filter by label across all active tasks regardless of due date (repeatable, AND logic) |
 | `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |
@@ -101,6 +102,7 @@ export TODOIST_TOKEN=your_token_here
 | `cp <task>` | Copy task URL to clipboard |
 | `open <task>` | Reopen a completed task |
 | `search <query>` | Search tasks by content or description across all projects |
+| `search -i <query>` | Same, prepending the full task ID to each line (for scripting) |
 | `comment <task> <text>` | Add a comment to a task |
 | `overdue` | Triage overdue tasks interactively (done, reschedule, skip) |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |

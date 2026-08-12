@@ -24,6 +24,10 @@ var (
 	lsRecursive bool
 )
 
+// showIDs is set by the --ids flag on ls and search; printTask prepends the
+// full task ID when it's on.
+var showIDs bool
+
 var lsCmd = &cobra.Command{
 	Use:               "ls",
 	Short:             "List tasks",
@@ -286,7 +290,12 @@ func parseSince(s string) (time.Time, error) {
 
 func printCompleted(t todoist.CompletedTask) {
 	at := formatCompletedAt(t.CompletedAt)
+	// --ids upgrades to the full, unambiguous ID for scripting; otherwise the
+	// short prefix keeps the human view compact.
 	id := shortID(t.TaskID)
+	if showIDs {
+		id = t.TaskID
+	}
 	content := truncate(t.Content, 40)
 	fmt.Printf("  ✓  %s  %-40s  %s\n", id, content, at)
 }
@@ -345,6 +354,12 @@ func printTask(t tasks.Task) {
 	pri := priorityMark(t.Priority)
 	due := formatDue(t.DueDate, t.DueDatetime)
 	content := truncate(t.Content, 50)
+	if showIDs {
+		// Full ID (not the short prefix) so the output is an unambiguous handle
+		// for scripting — shortID can collide across the full cache.
+		fmt.Printf("  %s  %s  %-50s  %s\n", t.ID, pri, content, due)
+		return
+	}
 	fmt.Printf("  %s  %-50s  %s\n", pri, content, due)
 }
 
@@ -562,6 +577,7 @@ func init() {
 	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
 	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
 	lsCmd.Flags().BoolVarP(&lsRecursive, "recursive", "r", false, "include tasks from sub-projects of the active project, grouped by project")
+	lsCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	root.AddCommand(lsCmd)

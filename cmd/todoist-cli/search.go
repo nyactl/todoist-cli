@@ -39,5 +39,6 @@ var searchCmd = &cobra.Command{
 }
 
 func init() {
+	searchCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
 	root.AddCommand(searchCmd)
 }
