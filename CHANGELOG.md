@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1] - 2026-08-12
+
+### Bug Fixes
+
+- Sync skips tasks whose project was deleted instead of aborting on FK violation
+
+
 ## [1.12.0] - 2026-08-10
 
 ### Bug Fixes
