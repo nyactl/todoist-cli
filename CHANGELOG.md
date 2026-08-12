@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.14.0] - 2026-08-12
+
+### Documentation
+
+- Note that edit --add-label/--remove-label operate on cached labels
+
+### Features
+
+- Add ls -r to include sub-project tasks for the active project
+
+
 ## [1.13.0] - 2026-08-12
 
 ### Features
