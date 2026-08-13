@@ -176,19 +176,20 @@ func labelCompleter(cmd *cobra.Command, args []string, toComplete string) ([]str
 		return nil, cobra.ShellCompDirectiveError
 	}
 	defer conn.Close()
-	rows, err := conn.QueryContext(cmd.Context(),
-		`SELECT id, name FROM labels ORDER BY ord`)
+	// Complete both personal and shared labels so completion matches what the
+	// other label commands operate on.
+	rows, err := conn.QueryContext(cmd.Context(), allLabelsQuery)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
 	defer rows.Close()
 	var out []string
 	for rows.Next() {
-		var id, name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var id, name, kind string
+		if err := rows.Scan(&id, &name, &kind); err != nil {
 			return nil, cobra.ShellCompDirectiveError
 		}
-		out = append(out, name+"\t"+id)
+		out = append(out, name+"\t"+kind)
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
 }

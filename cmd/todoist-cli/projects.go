@@ -151,6 +151,7 @@ var projectsRmCmd = &cobra.Command{
 
 var projectsMvCmd = &cobra.Command{
 	Use:               "mv <project> <new-name>",
+	Aliases:           []string{"rename"}, // consistent with `labels rename`
 	Short:             "Rename a project",
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: projectCompleter,

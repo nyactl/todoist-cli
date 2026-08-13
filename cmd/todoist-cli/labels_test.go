@@ -22,6 +22,28 @@ func TestLabels_ListsAll(t *testing.T) {
 	}
 }
 
+func TestLabels_ListsPersonalAndShared(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedLabel(t, env.conn, "l1", "urgent", 0) // personal
+	hSeedLabeledTask(t, env, "t1", "wip")      // shared: only on a task
+	hSeedLabeledTask(t, env, "t2", "urgent")   // personal label also used on a task
+
+	out, err := runCmd(t, "labels")
+	if err != nil {
+		t.Fatalf("labels: %v", err)
+	}
+	if !strings.Contains(out, "urgent\tpersonal") {
+		t.Errorf("expected personal label marked personal, got: %q", out)
+	}
+	if !strings.Contains(out, "wip\tshared") {
+		t.Errorf("expected shared label marked shared, got: %q", out)
+	}
+	if strings.Contains(out, "urgent\tshared") {
+		t.Errorf("a personal label used on a task must not be listed as shared too: %q", out)
+	}
+}
+
 func TestLabels_EmptyDB(t *testing.T) {
 	newTestEnv(t, nil)
 

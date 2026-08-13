@@ -423,6 +423,24 @@ func TestProjectsMv_RenamesInAPIAndCache(t *testing.T) {
 	}
 }
 
+func TestProjectsRename_AliasWorks(t *testing.T) {
+	var gotBody todoist.UpdateProjectRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		writeJSON(w, todoist.Project{ID: "p1", Name: gotBody.Name})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Old")
+
+	if _, err := runCmd(t, "projects", "rename", "Old", "New"); err != nil {
+		t.Fatalf("projects rename (alias of mv): %v", err)
+	}
+	if gotBody.Name != "New" {
+		t.Errorf("expected rename via 'rename' alias, got %q", gotBody.Name)
+	}
+}
+
 func TestProjectsMv_MultiWordNewName(t *testing.T) {
 	var gotName string
 	mux := http.NewServeMux()

@@ -113,12 +113,16 @@ export TODOIST_TOKEN=your_token_here
 | `projects` | List all projects |
 | `projects add <name>` | Create a project |
 | `projects add <name> --parent <project>` | Create a sub-project |
-| `projects mv <project> <new-name>` | Rename a project |
+| `projects mv <project> <new-name>` | Rename a project (alias: `projects rename`) |
 | `projects rm <project>` | Delete a project — refuses if it or any sub-project still has tasks |
 | `projects rm <project> -f` | Force-delete a project even if it (or a sub-project) has tasks |
 | `sections` | List sections in the active project |
 | `sections rm <section>` | Delete a section from the active project |
-| `labels` | List all labels |
+| `labels` | List all labels — `id`, `name`, `kind` (`personal`/`shared`); see [note](#personal-vs-shared-labels) |
+| `labels rm <name>...` | Delete labels — prompts with the task count when in use |
+| `labels rm <name> -f` | Force-delete without the confirmation prompt |
+| `labels rm --unused` | Delete every label attached to no cached task |
+| `labels rename <old> <new>` | Rename a label across every task carrying it (alias: `labels mv`) |
 | `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
 
 ### Periods for `--done`
@@ -128,6 +132,25 @@ export TODOIST_TOKEN=your_token_here
 ### Completed tasks are scoped to the active project
 
 `ls --done` and the completed counters in `stats` are limited to the active `cd` context, just like the active-task views. With a context set, `ls --done` reports only that project's completions (and says so when there are none); `stats` shows the project name in its header. To review completions across **all** projects, clear the context first with `td cd`.
+
+### Personal vs shared labels
+
+Todoist has two kinds of labels:
+
+- **Personal** — the curated labels in your account, with a colour and an order. Created in the Todoist app or via the API.
+- **Shared** — a label name that lives only on tasks, with no colour/order and no ID. Applying a not-yet-existing label to a task creates a shared one — **including this CLI's `add -l` and `edit --add-label`**.
+
+Every label command treats a label the same way — **by name, across both kinds** — so there is no split where one command sees only personal labels and another only shared:
+
+| Command | Behaviour |
+|---------|-----------|
+| `labels` | Lists both, with a `kind` column (`personal`/`shared`); shared rows have an empty `id` |
+| tab-completion (`-l`, `--add-label`, `labels rm`/`rename`) | Suggests both, annotated with the kind |
+| `add -l`, `edit -l/--add-label/--remove-label` | Attach/detach by name (creates a shared label if the name is new) |
+| `ls -l <name>` | Filters by name — matches either kind |
+| `labels rm` / `labels rename` | Resolve the name and route to the correct Todoist endpoint automatically (personal → `/labels/{id}`, shared → `/labels/shared/*`) |
+
+So a label created from the CLI (shared) can be listed, completed, filtered, renamed, and deleted from the CLI just like a personal one. Run `sync` first so the cache reflects the current server state.
 
 ### Incremental label edits
 

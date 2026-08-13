@@ -77,6 +77,10 @@ type UpdateProjectRequest struct {
 	Name string `json:"name,omitempty"`
 }
 
+type UpdateLabelRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
 type CreateTaskRequest struct {
 	Content     string   `json:"content"`
 	Description string   `json:"description,omitempty"`
