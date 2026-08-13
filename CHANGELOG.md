@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0] - 2026-08-13
+
+### Features
+
+- Add labels rm and labels rename, handling personal and shared labels
+
+
 ## [1.15.0] - 2026-08-13
 
 ### Features
