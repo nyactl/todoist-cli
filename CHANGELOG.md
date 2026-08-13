@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0] - 2026-08-13
+
+### Features
+
+- Add --ids flag to ls and search to prepend full task IDs
+
+
 ## [1.14.1] - 2026-08-12
 
 ### Bug Fixes
