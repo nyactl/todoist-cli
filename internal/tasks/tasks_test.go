@@ -564,6 +564,83 @@ func TestByLabels_FilteredByProject(t *testing.T) {
 	}
 }
 
+// ByLabelFilter (exclusion)
+
+func TestByLabelFilter_ExcludeOnly_KeepsUnlabelled(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "t1", "actionable", "p1", "")
+	seedTask(t, conn, "t2", "parked", "p1", "")
+	seedTask(t, conn, "t3", "no labels", "p1", "")
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'someday')`)
+
+	ts, err := tasks.ByLabelFilter(context.Background(), conn, nil, []string{"someday"}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := map[string]bool{}
+	for _, x := range ts {
+		got[x.ID] = true
+	}
+	if !got["t1"] || !got["t3"] {
+		t.Errorf("expected non-someday tasks (including the unlabelled one), got %v", got)
+	}
+	if got["t2"] {
+		t.Error("the someday task must be excluded")
+	}
+}
+
+func TestByLabelFilter_IncludeAndExclude(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "t1", "work only", "p1", "")
+	seedTask(t, conn, "t2", "work parked", "p1", "")
+	seedTask(t, conn, "t3", "personal", "p1", "")
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'work')`)
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'work'), ('t2', 'someday')`)
+
+	ts, err := tasks.ByLabelFilter(context.Background(), conn, []string{"work"}, []string{"someday"}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 1 || ts[0].ID != "t1" {
+		t.Fatalf("expected only t1 (work, not someday), got %v", ts)
+	}
+}
+
+func TestByLabelFilter_ExcludeAnyOfMultiple(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "t1", "clean", "p1", "")
+	seedTask(t, conn, "t2", "has a", "p1", "")
+	seedTask(t, conn, "t3", "has b", "p1", "")
+	conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'a'), ('t3', 'b')`)
+
+	ts, err := tasks.ByLabelFilter(context.Background(), conn, nil, []string{"a", "b"}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 1 || ts[0].ID != "t1" {
+		t.Fatalf("expected only the task carrying neither a nor b, got %v", ts)
+	}
+}
+
+func TestByLabelFilter_ExcludeScopedToProject(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedProject(t, conn, "p2", "Personal")
+	seedTask(t, conn, "t1", "work clean", "p1", "")
+	seedTask(t, conn, "t2", "personal clean", "p2", "")
+
+	ts, err := tasks.ByLabelFilter(context.Background(), conn, nil, []string{"someday"}, "p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 1 || ts[0].ID != "t1" {
+		t.Fatalf("expected only p1's task, got %v", ts)
+	}
+}
+
 // Labels
 
 func TestLabels_ReturnsTaskLabels(t *testing.T) {

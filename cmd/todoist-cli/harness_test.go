@@ -68,6 +68,7 @@ func runCmd(t *testing.T, args ...string) (string, error) {
 	resetFlags(root)
 	// StringArray flags append on each Set call — pflag can't reset them via DefValue.
 	lsLabels = nil
+	lsNotLabels = nil
 	addLabels = nil
 	editLabels = nil
 	editAddLabels = nil

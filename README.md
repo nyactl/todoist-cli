@@ -82,6 +82,7 @@ export TODOIST_TOKEN=your_token_here
 | `ls -i` | Prepend the full task ID to each line (for scripting) |
 | `ls -d [period]` | List completed tasks (live API call) |
 | `ls -l <label>` | Filter by label across all active tasks regardless of due date (repeatable, AND logic) |
+| `ls --not-label <label>` | Exclude tasks carrying a label (repeatable); composes with `-l`. Unknown labels error |
 | `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |
 | `add <content>` | Create a task in the active project |
 | `add -D <due>` | Natural language due date — e.g. `"tomorrow"`, `"every monday"` |

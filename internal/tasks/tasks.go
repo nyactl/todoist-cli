@@ -74,22 +74,41 @@ func ByLabels(ctx context.Context, db *sql.DB, labelNames []string, projectID st
 	if len(labelNames) == 0 {
 		return nil, fmt.Errorf("at least one label required")
 	}
-	placeholders := make([]string, len(labelNames))
-	args := make([]any, len(labelNames))
-	for i, l := range labelNames {
-		placeholders[i] = "?"
-		args[i] = l
-	}
-	subquery := fmt.Sprintf(
-		`SELECT task_id FROM task_labels WHERE label_name IN (%s)
-		 GROUP BY task_id HAVING COUNT(DISTINCT label_name) = %d`,
-		strings.Join(placeholders, ","), len(labelNames))
+	return ByLabelFilter(ctx, db, labelNames, nil, projectID)
+}
 
-	where := fmt.Sprintf(`
+// ByLabelFilter returns active top-level tasks that carry every label in
+// include AND none of the labels in exclude, optionally scoped to a project.
+// Either set may be empty; with both empty it lists all active tasks (scoped).
+func ByLabelFilter(ctx context.Context, db *sql.DB, include, exclude []string, projectID string) ([]Task, error) {
+	where := `
 		WHERE t.is_completed = 0
-		  AND (t.parent_id IS NULL OR t.parent_id = '')
-		  AND t.id IN (%s)`, subquery)
+		  AND (t.parent_id IS NULL OR t.parent_id = '')`
+	var args []any
 
+	if len(include) > 0 {
+		ph := make([]string, len(include))
+		for i, l := range include {
+			ph[i] = "?"
+			args = append(args, l)
+		}
+		// task must carry ALL of the include labels
+		where += fmt.Sprintf(`
+		  AND t.id IN (SELECT task_id FROM task_labels WHERE label_name IN (%s)
+		              GROUP BY task_id HAVING COUNT(DISTINCT label_name) = %d)`,
+			strings.Join(ph, ","), len(include))
+	}
+	if len(exclude) > 0 {
+		ph := make([]string, len(exclude))
+		for i, l := range exclude {
+			ph[i] = "?"
+			args = append(args, l)
+		}
+		// task must carry NONE of the exclude labels
+		where += fmt.Sprintf(`
+		  AND t.id NOT IN (SELECT task_id FROM task_labels WHERE label_name IN (%s))`,
+			strings.Join(ph, ","))
+	}
 	if projectID != "" {
 		where += " AND t.project_id = ?"
 		args = append(args, projectID)

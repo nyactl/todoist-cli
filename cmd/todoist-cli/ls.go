@@ -19,10 +19,27 @@ import (
 var (
 	lsDone      string
 	lsLabels    []string
+	lsNotLabels []string
 	lsBoard     bool
 	lsPriority  int
 	lsRecursive bool
 )
+
+// validateLabels errors on any label name that is neither a personal label nor
+// present on a cached task, turning typos and unsupported negation syntax
+// (e.g. -l '!someday') into a clear message instead of a silent empty result.
+func validateLabels(ctx context.Context, conn *sql.DB, names ...string) error {
+	for _, name := range names {
+		lt, err := resolveLabel(ctx, conn, name)
+		if err != nil {
+			return err
+		}
+		if !lt.personal && lt.count == 0 {
+			return fmt.Errorf("unknown label %q — run: todoist-cli sync", name)
+		}
+	}
+	return nil
+}
 
 // showIDs is set by the --ids flag on ls and search; printTask prepends the
 // full task ID when it's on.
@@ -40,6 +57,8 @@ grouped by project. Only affects the with-context view.
 
 -l/--label searches all active tasks regardless of due date (account-wide when no
 context is set, or within the active project). It is not limited to the agenda view.
+--not-label excludes tasks carrying a label; it composes with -l. An unknown label
+name (including unsupported negation like -l '!x') is reported as an error.
 
 Use --done [period] to review completed tasks (live API call).
 Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.`,
@@ -65,12 +84,15 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			return err
 		}
 
-		if len(lsLabels) > 0 {
+		if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
+			if err := validateLabels(ctx, conn, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
+				return err
+			}
 			projectID := ""
 			if st.HasProject() {
 				projectID = st.ProjectID
 			}
-			ts, err := tasks.ByLabels(ctx, conn, lsLabels, projectID)
+			ts, err := tasks.ByLabelFilter(ctx, conn, lsLabels, lsNotLabels, projectID)
 			if err != nil {
 				return err
 			}
@@ -151,8 +173,11 @@ func runLsDone(cmd *cobra.Command) error {
 	}
 
 	items := res.Tasks
-	if len(lsLabels) > 0 {
-		items, err = filterCompletedByLabels(ctx, conn, items, lsLabels)
+	if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
+		if err := validateLabels(ctx, conn, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
+			return err
+		}
+		items, err = filterCompletedByLabels(ctx, conn, items, lsLabels, lsNotLabels)
 		if err != nil {
 			return err
 		}
@@ -208,49 +233,74 @@ func runLsDone(cmd *cobra.Command) error {
 	return nil
 }
 
-func filterCompletedByLabels(ctx context.Context, db *sql.DB, items []todoist.CompletedTask, labelNames []string) ([]todoist.CompletedTask, error) {
-	if len(items) == 0 || len(labelNames) == 0 {
+func filterCompletedByLabels(ctx context.Context, db *sql.DB, items []todoist.CompletedTask, include, exclude []string) ([]todoist.CompletedTask, error) {
+	if len(items) == 0 || (len(include) == 0 && len(exclude) == 0) {
 		return items, nil
 	}
+	ids := make([]any, len(items))
 	idPH := make([]string, len(items))
-	labelPH := make([]string, len(labelNames))
-	args := make([]any, 0, len(items)+len(labelNames))
 	for i, t := range items {
+		ids[i] = t.TaskID
 		idPH[i] = "?"
-		args = append(args, t.TaskID)
 	}
-	for i, l := range labelNames {
+
+	var includeMatch, excludeMatch map[string]bool
+	var err error
+	if len(include) > 0 {
+		// among these items, the ones carrying ALL include labels
+		includeMatch, err = completedLabelSet(ctx, db, ids, idPH, include,
+			fmt.Sprintf(` GROUP BY task_id HAVING COUNT(DISTINCT label_name) = %d`, len(include)))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(exclude) > 0 {
+		// the ones carrying ANY exclude label
+		excludeMatch, err = completedLabelSet(ctx, db, ids, idPH, exclude, "")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	out := items[:0]
+	for _, t := range items {
+		if includeMatch != nil && !includeMatch[t.TaskID] {
+			continue
+		}
+		if excludeMatch != nil && excludeMatch[t.TaskID] {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// completedLabelSet returns the task IDs (from the given item IDs) that match
+// the labels, with an optional trailing clause (e.g. a HAVING for AND logic).
+func completedLabelSet(ctx context.Context, db *sql.DB, ids []any, idPH []string, labels []string, trailing string) (map[string]bool, error) {
+	labelPH := make([]string, len(labels))
+	args := append([]any{}, ids...)
+	for i, l := range labels {
 		labelPH[i] = "?"
 		args = append(args, l)
 	}
 	q := fmt.Sprintf(
-		`SELECT task_id FROM task_labels
-		 WHERE task_id IN (%s) AND label_name IN (%s)
-		 GROUP BY task_id HAVING COUNT(DISTINCT label_name) = %d`,
-		strings.Join(idPH, ","), strings.Join(labelPH, ","), len(labelNames))
+		`SELECT task_id FROM task_labels WHERE task_id IN (%s) AND label_name IN (%s)%s`,
+		strings.Join(idPH, ","), strings.Join(labelPH, ","), trailing)
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	matched := map[string]bool{}
+	set := map[string]bool{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		matched[id] = true
+		set[id] = true
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	out := items[:0]
-	for _, t := range items {
-		if matched[t.TaskID] {
-			out = append(out, t)
-		}
-	}
-	return out, nil
+	return set, rows.Err()
 }
 
 func parseSince(s string) (time.Time, error) {
@@ -574,11 +624,13 @@ func printBoard(ts []tasks.Task) {
 func init() {
 	lsCmd.Flags().StringVarP(&lsDone, "done", "d", "", "show completed tasks: today, week, month, year, Nd/Nw/Nm")
 	lsCmd.Flags().StringArrayVarP(&lsLabels, "label", "l", nil, "filter by label (repeatable, AND logic)")
+	lsCmd.Flags().StringArrayVar(&lsNotLabels, "not-label", nil, "exclude tasks carrying this label (repeatable)")
 	lsCmd.Flags().BoolVarP(&lsBoard, "board", "b", false, "show tasks as side-by-side columns (requires project context)")
 	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
 	lsCmd.Flags().BoolVarP(&lsRecursive, "recursive", "r", false, "include tasks from sub-projects of the active project, grouped by project")
 	lsCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
+	lsCmd.RegisterFlagCompletionFunc("not-label", labelCompleter)
 	root.AddCommand(lsCmd)
 }
