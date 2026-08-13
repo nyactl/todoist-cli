@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0] - 2026-08-13
+
+### Features
+
+- Add ls --not-label to exclude labels, and error on unknown label names
+
+
 ## [1.16.0] - 2026-08-13
 
 ### Features
