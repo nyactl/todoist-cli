@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0] - 2026-08-17
+
+### Features
+
+- Show project, priority, and deadline in show output
+
+
 ## [1.17.0] - 2026-08-13
 
 ### Features
