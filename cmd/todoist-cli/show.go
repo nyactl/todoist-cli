@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -43,19 +44,37 @@ var showCmd = &cobra.Command{
 		if t.Description != "" {
 			fmt.Printf("\n%s\n", t.Description)
 		}
+
+		// Metadata block — aligned, only fields that carry information.
+		var meta []string
+		if pn := projectNameByID(ctx, t.ProjectID); pn != "" && pn != "Inbox" {
+			meta = append(meta, fmt.Sprintf("%-9s %s", "project", pn))
+		}
+		if t.Priority > todoist.PriorityNormal {
+			meta = append(meta, fmt.Sprintf("%-9s %d (%s)", "priority", t.Priority, priorityWord(t.Priority)))
+		}
 		if t.Due != nil {
 			due := t.Due.Date
 			if t.Due.Datetime != "" {
 				due = t.Due.Datetime
 			}
-			fmt.Printf("\ndue  %s", due)
+			line := fmt.Sprintf("%-9s %s", "due", due)
 			if t.Due.String != "" {
-				fmt.Printf("  (%s)", t.Due.String)
+				line += fmt.Sprintf("  (%s)", t.Due.String)
 			}
-			fmt.Println()
+			meta = append(meta, line)
+		}
+		if t.Deadline != nil && t.Deadline.Date != "" {
+			meta = append(meta, fmt.Sprintf("%-9s %s", "deadline", t.Deadline.Date))
 		}
 		if len(t.Labels) > 0 {
-			fmt.Printf("labels  %s\n", strings.Join(t.Labels, ", "))
+			meta = append(meta, fmt.Sprintf("%-9s %s", "labels", strings.Join(t.Labels, ", ")))
+		}
+		if len(meta) > 0 {
+			fmt.Println()
+			for _, line := range meta {
+				fmt.Println(line)
+			}
 		}
 
 		// subtasks from local cache
@@ -83,6 +102,36 @@ var showCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// projectNameByID resolves a project ID to its name from the local cache.
+// Returns "" when unknown (e.g. cache miss), so callers simply omit the line.
+func projectNameByID(ctx context.Context, id string) string {
+	if id == "" {
+		return ""
+	}
+	conn, err := db.Open()
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	var name string
+	conn.QueryRowContext(ctx, `SELECT name FROM projects WHERE id = ?`, id).Scan(&name)
+	return name
+}
+
+// priorityWord maps a Todoist priority (4 highest) to a human label.
+func priorityWord(p int) string {
+	switch p {
+	case todoist.PriorityUrgent:
+		return "urgent"
+	case todoist.PriorityHigh:
+		return "high"
+	case todoist.PriorityMedium:
+		return "medium"
+	default:
+		return "normal"
+	}
 }
 
 var showProject string

@@ -126,6 +126,72 @@ func TestShow_DisplaysLabels(t *testing.T) {
 	}
 }
 
+func TestShow_DisplaysPriorityAndProject(t *testing.T) {
+	task := todoist.Task{ID: "t-pp", Content: "Write tests", ProjectID: "p-plat", Priority: 3}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p-plat", "Platform")
+	hSeedTask(t, env.conn, "t-pp", "Write tests", "p-plat", "")
+
+	out, err := runCmd(t, "show", "t-pp")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "project") || !strings.Contains(out, "Platform") {
+		t.Errorf("expected project line with name, got: %q", out)
+	}
+	if !strings.Contains(out, "priority") || !strings.Contains(out, "3 (high)") {
+		t.Errorf("expected 'priority  3 (high)', got: %q", out)
+	}
+}
+
+func TestShow_HidesDefaultPriorityAndInbox(t *testing.T) {
+	task := todoist.Task{ID: "t-def", Content: "Task", ProjectID: "p-inbox", Priority: 1}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p-inbox", "Inbox")
+	hSeedTask(t, env.conn, "t-def", "Task", "p-inbox", "")
+
+	out, err := runCmd(t, "show", "t-def")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if strings.Contains(out, "priority") {
+		t.Errorf("default priority (1) must be hidden, got: %q", out)
+	}
+	if strings.Contains(out, "Inbox") {
+		t.Errorf("Inbox project must be hidden, got: %q", out)
+	}
+}
+
+func TestShow_DisplaysDeadline(t *testing.T) {
+	task := todoist.Task{ID: "t-dl", Content: "Renew domain", Deadline: &todoist.Deadline{Date: "2026-09-30"}}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t-dl", "Renew domain", "p1", "")
+
+	out, err := runCmd(t, "show", "t-dl")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "deadline") || !strings.Contains(out, "2026-09-30") {
+		t.Errorf("expected deadline line, got: %q", out)
+	}
+}
+
+func TestShow_NoDeadline_Omitted(t *testing.T) {
+	task := todoist.Task{ID: "t-nodl", Content: "Task"}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t-nodl", "Task", "p1", "")
+
+	out, err := runCmd(t, "show", "t-nodl")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if strings.Contains(out, "deadline") {
+		t.Errorf("deadline must be omitted when unset, got: %q", out)
+	}
+}
+
 func TestShow_DisplaysComments(t *testing.T) {
 	task := todoist.Task{ID: "task-c", Content: "Fix bug"}
 	comments := []todoist.Comment{

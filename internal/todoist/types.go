@@ -10,20 +10,21 @@ const (
 )
 
 type Task struct {
-	ID           string   `json:"id"`
-	Content      string   `json:"content"`
-	Description  string   `json:"description"`
-	IsCompleted  bool     `json:"is_completed"`
-	Priority     int      `json:"priority"`
-	ProjectID    string   `json:"project_id"`
-	SectionID    string   `json:"section_id"`
-	ParentID     string   `json:"parent_id"`
-	Labels       []string `json:"labels"`
-	Due          *Due     `json:"due"`
-	Order        int      `json:"order"`
-	CreatedAt    string   `json:"created_at"`
-	URL          string   `json:"url"`
-	CommentCount int      `json:"comment_count"`
+	ID           string    `json:"id"`
+	Content      string    `json:"content"`
+	Description  string    `json:"description"`
+	IsCompleted  bool      `json:"is_completed"`
+	Priority     int       `json:"priority"`
+	ProjectID    string    `json:"project_id"`
+	SectionID    string    `json:"section_id"`
+	ParentID     string    `json:"parent_id"`
+	Labels       []string  `json:"labels"`
+	Due          *Due      `json:"due"`
+	Deadline     *Deadline `json:"deadline"`
+	Order        int       `json:"order"`
+	CreatedAt    string    `json:"created_at"`
+	URL          string    `json:"url"`
+	CommentCount int       `json:"comment_count"`
 }
 
 type Due struct {
@@ -32,6 +33,12 @@ type Due struct {
 	Timezone    string `json:"timezone,omitempty"`
 	IsRecurring bool   `json:"is_recurring"`
 	String      string `json:"string"`
+}
+
+// Deadline is Todoist's hard-cutoff date, distinct from Due. Date-only.
+type Deadline struct {
+	Date string `json:"date"`
+	Lang string `json:"lang,omitempty"`
 }
 
 type Project struct {

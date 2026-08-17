@@ -95,7 +95,7 @@ export TODOIST_TOKEN=your_token_here
 | `edit <task> -l <label>` | Replace the entire label set (repeatable) |
 | `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
 | `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |
-| `show <task>` | Show full task details, subtasks, and comments |
+| `show <task>` | Show full task details — project, priority, due, deadline, labels, subtasks, and comments |
 | `mv <task> <section>` | Move task to a different section within the current project |
 | `mv <task> -p <project>` | Move task to a different project |
 | `mv <task> -p <project> -s <section>` | Move task to a specific section in a different project |
