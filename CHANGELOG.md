@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0] - 2026-08-18
+
+### Features
+
+- Add show --json for machine-readable task output
+
+
 ## [1.19.0] - 2026-08-18
 
 ### Features
