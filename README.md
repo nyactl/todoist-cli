@@ -96,6 +96,7 @@ export TODOIST_TOKEN=your_token_here
 | `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
 | `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |
 | `show <task>` | Show full task details — project, priority, due, deadline, labels, subtasks, and comments |
+| `show <task> --json` | Emit the task as a machine-readable JSON object (id, content, project, section, priority, labels, due, deadline, created_at, url, comments) for `jq`/scripting |
 | `mv <task> <section>` | Move task to a different section within the current project |
 | `mv <task> -p <project>` | Move task to a different project |
 | `mv <task> -p <project> -s <section>` | Move task to a specific section in a different project |

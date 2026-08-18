@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -41,6 +42,28 @@ var showCmd = &cobra.Command{
 			return err
 		}
 
+		// Comments + resolved author names — shared by both output modes.
+		comments, _ := client.GetComments(ctx, t.ID)
+		authors := map[string]string{}
+		if len(comments) > 0 {
+			if collabs, err := client.GetCollaborators(ctx, t.ProjectID); err == nil {
+				for _, c := range collabs {
+					authors[c.ID] = c.Name
+				}
+			}
+		}
+		authorName := func(uid string) string {
+			if n := authors[uid]; n != "" {
+				return n
+			}
+			return uid
+		}
+		projectName := projectNameByID(ctx, t.ProjectID)
+
+		if showJSON {
+			return emitTaskJSON(t, projectName, sectionNameByID(ctx, t.SectionID), comments, authorName)
+		}
+
 		fmt.Printf("%s  %s\n", shortID(t.ID), t.Content)
 		if t.Description != "" {
 			fmt.Printf("\n%s\n", t.Description)
@@ -48,8 +71,8 @@ var showCmd = &cobra.Command{
 
 		// Metadata block — aligned, only fields that carry information.
 		var meta []string
-		if pn := projectNameByID(ctx, t.ProjectID); pn != "" && pn != "Inbox" {
-			meta = append(meta, fmt.Sprintf("%-9s %s", "project", pn))
+		if projectName != "" && projectName != "Inbox" {
+			meta = append(meta, fmt.Sprintf("%-9s %s", "project", projectName))
 		}
 		if t.Priority > todoist.PriorityNormal {
 			meta = append(meta, fmt.Sprintf("%-9s %d (%s)", "priority", t.Priority, priorityWord(t.Priority)))
@@ -89,26 +112,13 @@ var showCmd = &cobra.Command{
 			conn.Close()
 		}
 
-		// comments from API, with author names resolved from the project's
-		// collaborators (falls back to the raw uid if resolution is unavailable)
-		comments, err := client.GetComments(ctx, t.ID)
-		if err == nil && len(comments) > 0 {
-			authors := map[string]string{}
-			if collabs, err := client.GetCollaborators(ctx, t.ProjectID); err == nil {
-				for _, c := range collabs {
-					authors[c.ID] = c.Name
-				}
-			}
+		if len(comments) > 0 {
 			fmt.Println("\ncomments")
 			for i, c := range comments {
 				if i > 0 {
 					fmt.Println()
 				}
-				author := authors[c.PostedUID]
-				if author == "" {
-					author = c.PostedUID
-				}
-				fmt.Printf("  %s  %s\n", formatCommentTime(c.PostedAt), author)
+				fmt.Printf("  %s  %s\n", formatCommentTime(c.PostedAt), authorName(c.PostedUID))
 				fmt.Printf("  %s\n", c.Content)
 			}
 		}
@@ -153,6 +163,91 @@ func formatCommentTime(iso string) string {
 	return t.Local().Format("2006-01-02 15:04:05")
 }
 
+// sectionNameByID resolves a section ID to its name from the local cache.
+func sectionNameByID(ctx context.Context, id string) string {
+	if id == "" {
+		return ""
+	}
+	conn, err := db.Open()
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	var name string
+	conn.QueryRowContext(ctx, `SELECT name FROM sections WHERE id = ?`, id).Scan(&name)
+	return name
+}
+
+// emitTaskJSON prints the task as a machine-readable JSON object matching the
+// documented schema (issue #19). Absent fields serialize as null; labels and
+// comments are always arrays.
+func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.Comment, authorName func(string) string) error {
+	type jsonDue struct {
+		Date      string  `json:"date"`
+		Datetime  *string `json:"datetime"`
+		Recurring bool    `json:"recurring"`
+	}
+	type jsonComment struct {
+		ID       string `json:"id"`
+		PostedAt string `json:"posted_at"`
+		Author   string `json:"author"`
+		Content  string `json:"content"`
+	}
+	out := struct {
+		ID          string        `json:"id"`
+		Content     string        `json:"content"`
+		Description string        `json:"description"`
+		Project     *string       `json:"project"`
+		Section     *string       `json:"section"`
+		Priority    int           `json:"priority"`
+		Labels      []string      `json:"labels"`
+		Due         *jsonDue      `json:"due"`
+		Deadline    *string       `json:"deadline"`
+		CreatedAt   string        `json:"created_at"`
+		URL         string        `json:"url"`
+		Comments    []jsonComment `json:"comments"`
+	}{
+		ID:          t.ID,
+		Content:     t.Content,
+		Description: t.Description,
+		Project:     nilIfEmpty(project),
+		Section:     nilIfEmpty(section),
+		Priority:    t.Priority,
+		Labels:      []string{},
+		CreatedAt:   t.CreatedAt,
+		URL:         t.URL,
+		Comments:    []jsonComment{},
+	}
+	if len(t.Labels) > 0 {
+		out.Labels = t.Labels
+	}
+	if t.Due != nil {
+		out.Due = &jsonDue{Date: t.Due.Date, Datetime: nilIfEmpty(t.Due.Datetime), Recurring: t.Due.IsRecurring}
+	}
+	if t.Deadline != nil {
+		out.Deadline = nilIfEmpty(t.Deadline.Date)
+	}
+	for _, c := range comments {
+		out.Comments = append(out.Comments, jsonComment{
+			ID: c.ID, PostedAt: c.PostedAt, Author: authorName(c.PostedUID), Content: c.Content,
+		})
+	}
+
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 // priorityWord maps a Todoist priority (4 highest) to a human label.
 func priorityWord(p int) string {
 	switch p {
@@ -167,10 +262,14 @@ func priorityWord(p int) string {
 	}
 }
 
-var showProject string
+var (
+	showProject string
+	showJSON    bool
+)
 
 func init() {
 	showCmd.Flags().StringVarP(&showProject, "project", "p", "", "filter task completion by project name")
+	showCmd.Flags().BoolVar(&showJSON, "json", false, "emit the task as a machine-readable JSON object")
 	showCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	root.AddCommand(showCmd)
 }

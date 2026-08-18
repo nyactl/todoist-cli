@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -8,6 +9,93 @@ import (
 
 	"github.com/nyactl/todoist-cli/internal/todoist"
 )
+
+func TestShow_JSON_FullObject(t *testing.T) {
+	dt := "2026-09-01T14:00:00Z"
+	task := todoist.Task{
+		ID: "task-j", Content: "Review budget", Description: "Focus on infra.",
+		ProjectID: "p1", SectionID: "s1", Priority: 3,
+		Labels:    []string{"finance", "review"},
+		Due:       &todoist.Due{Date: "2026-09-01", Datetime: dt, IsRecurring: true},
+		Deadline:  &todoist.Deadline{Date: "2026-09-05"},
+		CreatedAt: "2026-07-15T09:12:00Z",
+		URL:       "https://todoist.com/app/task/task-j",
+	}
+	comments := []todoist.Comment{
+		{ID: "cmt1", PostedAt: "2026-07-20T14:35:00Z", PostedUID: "u1", Content: "Draft in the shared drive."},
+	}
+	collabs := []todoist.Collaborator{{ID: "u1", Name: "Alice"}}
+	env := newTestEnv(t, commentStub(task, comments, collabs))
+	hSeedProject(t, env.conn, "p1", "Finance")
+	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
+	hSeedTask(t, env.conn, "task-j", "Review budget", "p1", "s1")
+
+	out, err := runCmd(t, "show", "task-j", "--json")
+	if err != nil {
+		t.Fatalf("show --json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	str := map[string]string{"id": "task-j", "content": "Review budget", "description": "Focus on infra.",
+		"project": "Finance", "section": "Backlog", "deadline": "2026-09-05",
+		"created_at": "2026-07-15T09:12:00Z", "url": "https://todoist.com/app/task/task-j"}
+	for k, want := range str {
+		if got[k] != want {
+			t.Errorf("json[%q] = %v, want %q", k, got[k], want)
+		}
+	}
+	if got["priority"].(float64) != 3 {
+		t.Errorf("priority = %v, want 3", got["priority"])
+	}
+	if labels := got["labels"].([]any); len(labels) != 2 || labels[0] != "finance" {
+		t.Errorf("labels = %v", labels)
+	}
+	due := got["due"].(map[string]any)
+	if due["date"] != "2026-09-01" || due["datetime"] != dt || due["recurring"] != true {
+		t.Errorf("due = %v", due)
+	}
+	cs := got["comments"].([]any)
+	if len(cs) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(cs))
+	}
+	c0 := cs[0].(map[string]any)
+	if c0["author"] != "Alice" || c0["posted_at"] != "2026-07-20T14:35:00Z" || c0["content"] != "Draft in the shared drive." {
+		t.Errorf("comment = %v", c0)
+	}
+}
+
+func TestShow_JSON_NullAndArrayFields(t *testing.T) {
+	task := todoist.Task{ID: "task-min", Content: "Minimal", ProjectID: "p1"} // no section/due/deadline/labels
+	env := newTestEnv(t, commentStub(task, nil, nil))
+	hSeedProject(t, env.conn, "p1", "Inbox")
+	hSeedTask(t, env.conn, "task-min", "Minimal", "p1", "")
+
+	out, err := runCmd(t, "show", "task-min", "--json")
+	if err != nil {
+		t.Fatalf("show --json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	for _, k := range []string{"section", "due", "deadline"} {
+		if v, present := got[k]; !present || v != nil {
+			t.Errorf("expected %q to be null, got %v (present=%v)", k, v, present)
+		}
+	}
+	if _, ok := got["labels"].([]any); !ok {
+		t.Errorf("labels must be an array, got %T", got["labels"])
+	}
+	if _, ok := got["comments"].([]any); !ok {
+		t.Errorf("comments must be an array, got %T", got["comments"])
+	}
+	// JSON includes the project even when it is Inbox (unlike the human view)
+	if got["project"] != "Inbox" {
+		t.Errorf("project = %v, want Inbox", got["project"])
+	}
+}
 
 func TestFormatCommentTime(t *testing.T) {
 	shape := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
