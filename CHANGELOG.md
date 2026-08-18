@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0] - 2026-08-18
+
+### Features
+
+- Show comment datetime and author name in show output
+
+
 ## [1.18.0] - 2026-08-17
 
 ### Features
