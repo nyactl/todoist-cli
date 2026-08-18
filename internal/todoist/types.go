@@ -69,10 +69,19 @@ type Section struct {
 }
 
 type Comment struct {
-	ID       string `json:"id"`
-	TaskID   string `json:"task_id"`
-	Content  string `json:"content"`
-	PostedAt string `json:"posted_at"`
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	Content   string `json:"content"`
+	PostedAt  string `json:"posted_at"`
+	PostedUID string `json:"posted_uid"`
+}
+
+// Collaborator is a member of a project; used to resolve a comment's posted_uid
+// to a display name.
+type Collaborator struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type CreateProjectRequest struct {

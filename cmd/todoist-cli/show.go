@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
@@ -88,12 +89,27 @@ var showCmd = &cobra.Command{
 			conn.Close()
 		}
 
-		// comments from API
+		// comments from API, with author names resolved from the project's
+		// collaborators (falls back to the raw uid if resolution is unavailable)
 		comments, err := client.GetComments(ctx, t.ID)
 		if err == nil && len(comments) > 0 {
+			authors := map[string]string{}
+			if collabs, err := client.GetCollaborators(ctx, t.ProjectID); err == nil {
+				for _, c := range collabs {
+					authors[c.ID] = c.Name
+				}
+			}
 			fmt.Println("\ncomments")
-			for _, c := range comments {
-				fmt.Printf("  %s  %s\n", c.PostedAt[:10], c.Content)
+			for i, c := range comments {
+				if i > 0 {
+					fmt.Println()
+				}
+				author := authors[c.PostedUID]
+				if author == "" {
+					author = c.PostedUID
+				}
+				fmt.Printf("  %s  %s\n", formatCommentTime(c.PostedAt), author)
+				fmt.Printf("  %s\n", c.Content)
 			}
 		}
 
@@ -118,6 +134,23 @@ func projectNameByID(ctx context.Context, id string) string {
 	var name string
 	conn.QueryRowContext(ctx, `SELECT name FROM projects WHERE id = ?`, id).Scan(&name)
 	return name
+}
+
+// formatCommentTime renders a comment's posted_at (UTC ISO) as a full local
+// date-time. Comments can be old, so the year is always shown (unlike the
+// relative format used for the completed-task view).
+func formatCommentTime(iso string) string {
+	t, err := time.Parse("2006-01-02T15:04:05.000000Z", iso)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, iso)
+		if err != nil {
+			if len(iso) >= 10 {
+				return iso[:10]
+			}
+			return iso
+		}
+	}
+	return t.Local().Format("2006-01-02 15:04:05")
 }
 
 // priorityWord maps a Todoist priority (4 highest) to a human label.

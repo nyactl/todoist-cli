@@ -2,11 +2,31 @@ package main
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/nyactl/todoist-cli/internal/todoist"
 )
+
+func TestFormatCommentTime(t *testing.T) {
+	shape := regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
+	for _, in := range []string{
+		"2026-08-18T05:47:50.325458Z", // fractional seconds (real API shape)
+		"2026-06-01T09:00:00Z",        // plain RFC3339
+	} {
+		if got := formatCommentTime(in); !shape.MatchString(got) {
+			t.Errorf("formatCommentTime(%q) = %q, want YYYY-MM-DD HH:MM:SS", in, got)
+		}
+	}
+	// unparseable input degrades to the date prefix rather than erroring
+	if got := formatCommentTime("garbage"); got != "garbage" {
+		t.Errorf("expected raw passthrough for unparseable short input, got %q", got)
+	}
+	if got := formatCommentTime("2026-06-01 weird"); got != "2026-06-01" {
+		t.Errorf("expected date-prefix fallback, got %q", got)
+	}
+}
 
 // stubTaskHandler returns an HTTP handler that serves a single task on GET /tasks/{id}
 // and an empty comment list on GET /comments.
@@ -192,20 +212,27 @@ func TestShow_NoDeadline_Omitted(t *testing.T) {
 	}
 }
 
-func TestShow_DisplaysComments(t *testing.T) {
-	task := todoist.Task{ID: "task-c", Content: "Fix bug"}
-	comments := []todoist.Comment{
-		{ID: "c1", TaskID: "task-c", Content: "Needs a unit test too.", PostedAt: "2026-06-01T09:00:00Z"},
-		{ID: "c2", TaskID: "task-c", Content: "Confirmed fixed.", PostedAt: "2026-06-02T10:00:00Z"},
-	}
+// commentStub serves a task, its comments, and the project's collaborators.
+func commentStub(task todoist.Task, comments []todoist.Comment, collabs []todoist.Collaborator) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, task)
-	})
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, task) })
 	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, apiPage[todoist.Comment]{Results: comments})
 	})
-	env := newTestEnv(t, mux)
+	mux.HandleFunc("/projects/p1/collaborators", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, apiPage[todoist.Collaborator]{Results: collabs})
+	})
+	return mux
+}
+
+func TestShow_DisplaysComments(t *testing.T) {
+	task := todoist.Task{ID: "task-c", Content: "Fix bug", ProjectID: "p1"}
+	comments := []todoist.Comment{
+		{ID: "c1", Content: "Needs a unit test too.", PostedAt: "2026-06-01T09:00:00Z", PostedUID: "u1"},
+		{ID: "c2", Content: "Confirmed fixed.", PostedAt: "2026-06-02T10:30:00Z", PostedUID: "u2"},
+	}
+	collabs := []todoist.Collaborator{{ID: "u1", Name: "Alice"}, {ID: "u2", Name: "Bob"}}
+	env := newTestEnv(t, commentStub(task, comments, collabs))
 	hSeedProject(t, env.conn, "p1", "Work")
 	hSeedTask(t, env.conn, "task-c", "Fix bug", "p1", "")
 
@@ -213,11 +240,33 @@ func TestShow_DisplaysComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show: %v", err)
 	}
-	if !strings.Contains(out, "Needs a unit test too.") {
-		t.Errorf("expected first comment in output, got: %q", out)
+	for _, want := range []string{"Needs a unit test too.", "Confirmed fixed.", "Alice", "Bob"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got: %q", want, out)
+		}
 	}
-	if !strings.Contains(out, "Confirmed fixed.") {
-		t.Errorf("expected second comment in output, got: %q", out)
+	// A full date-time (with time component) must be rendered — TZ-independent check.
+	if !regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`).MatchString(out) {
+		t.Errorf("expected a full date-time on each comment, got: %q", out)
+	}
+}
+
+func TestShow_CommentAuthorFallsBackToUID(t *testing.T) {
+	task := todoist.Task{ID: "task-c", Content: "Fix bug", ProjectID: "p1"}
+	comments := []todoist.Comment{
+		{ID: "c1", Content: "From a former collaborator.", PostedAt: "2026-06-01T09:00:00Z", PostedUID: "ghost-uid"},
+	}
+	// collaborators list does not contain ghost-uid
+	env := newTestEnv(t, commentStub(task, comments, []todoist.Collaborator{{ID: "u1", Name: "Alice"}}))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-c", "Fix bug", "p1", "")
+
+	out, err := runCmd(t, "show", "task-c")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(out, "ghost-uid") {
+		t.Errorf("expected fallback to the raw uid when unresolved, got: %q", out)
 	}
 }
 
