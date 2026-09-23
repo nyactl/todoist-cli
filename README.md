@@ -118,6 +118,8 @@ export TODOIST_TOKEN=your_token_here
 | `projects add <name>` | Create a project |
 | `projects add <name> --parent <project>` | Create a sub-project |
 | `projects mv <project> <new-name>` | Rename a project (alias: `projects rename`) |
+| `projects mv <project> --parent <parent>` | Move a project under a new parent; combine with a new name to rename and reparent at once |
+| `projects mv <project> --parent ""` | Promote a project back to the top level |
 | `projects rm <project>` | Delete a project — refuses if it or any sub-project still has tasks |
 | `projects rm <project> -f` | Force-delete a project even if it (or a sub-project) has tasks |
 | `sections` | List sections in the active project |

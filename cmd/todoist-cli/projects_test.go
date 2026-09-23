@@ -3,12 +3,60 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/nyactl/todoist-cli/internal/todoist"
 )
+
+// capturedMove records the project_move command a /sync stub received.
+type capturedMove struct {
+	called   bool
+	id       string
+	parentID any // string when set, nil when promoting to root
+}
+
+// makeReparentStub serves both the rename endpoint (POST /projects/{id}) and
+// the Sync API (POST /sync) so combined rename+reparent flows work. The move
+// command's args are recorded into cap; when fail is true the sync command is
+// reported as failed while the HTTP call still succeeds, mirroring the API.
+func makeReparentStub(t *testing.T, cap *capturedMove, fail bool) http.Handler {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		var body todoist.UpdateProjectRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		id := strings.TrimPrefix(r.URL.Path, "/projects/")
+		writeJSON(w, todoist.Project{ID: id, Name: body.Name})
+	})
+	mux.HandleFunc("/sync", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		var cmds []struct {
+			UUID string `json:"uuid"`
+			Args struct {
+				ID       string `json:"id"`
+				ParentID any    `json:"parent_id"`
+			} `json:"args"`
+		}
+		json.Unmarshal([]byte(r.Form.Get("commands")), &cmds)
+		if len(cmds) != 1 {
+			t.Errorf("expected exactly one sync command, got %d", len(cmds))
+			http.Error(w, "bad", http.StatusBadRequest)
+			return
+		}
+		cap.called = true
+		cap.id = cmds[0].Args.ID
+		cap.parentID = cmds[0].Args.ParentID
+		if fail {
+			fmt.Fprintf(w, `{"sync_status":{%q:{"error":"Invalid parent","error_code":56,"error_tag":"INVALID_PARENT"}}}`, cmds[0].UUID)
+			return
+		}
+		fmt.Fprintf(w, `{"sync_status":{%q:"ok"}}`, cmds[0].UUID)
+	})
+	return mux
+}
 
 func TestProjects_ListsAll(t *testing.T) {
 	env := newTestEnv(t, nil)
@@ -498,6 +546,153 @@ func TestProjectsMv_APIError_LeavesCacheUnchanged(t *testing.T) {
 		`SELECT name FROM projects WHERE id = 'p-err'`).Scan(&name)
 	if name != "Original" {
 		t.Errorf("expected cache name unchanged 'Original' on API failure, got %q", name)
+	}
+}
+
+// --- projects mv (reparent) ---
+
+func TestProjectsMv_Reparents_SendsMoveAndUpdatesCache(t *testing.T) {
+	var cap capturedMove
+	env := newTestEnv(t, makeReparentStub(t, &cap, false))
+	hSeedProject(t, env.conn, "parent-id", "Work")
+	hSeedProject(t, env.conn, "child-id", "Alpha")
+
+	out, err := runCmd(t, "projects", "mv", "Alpha", "--parent", "Work")
+	if err != nil {
+		t.Fatalf("projects mv --parent: %v", err)
+	}
+	if !cap.called {
+		t.Fatal("expected a project_move sync command to be sent")
+	}
+	if cap.id != "child-id" {
+		t.Errorf("expected move id 'child-id', got %q", cap.id)
+	}
+	if cap.parentID != "parent-id" {
+		t.Errorf("expected parent_id 'parent-id' sent, got %v", cap.parentID)
+	}
+	if !strings.Contains(out, "moved: Alpha -> parent Work") {
+		t.Errorf("expected reparent confirmation in output, got: %q", out)
+	}
+
+	var parentID string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT COALESCE(parent_id,'') FROM projects WHERE id = 'child-id'`).Scan(&parentID)
+	if parentID != "parent-id" {
+		t.Errorf("expected cache parent_id 'parent-id', got %q", parentID)
+	}
+}
+
+func TestProjectsMv_PromoteToRoot_SendsNullParent(t *testing.T) {
+	var cap capturedMove
+	env := newTestEnv(t, makeReparentStub(t, &cap, false))
+	hSeedProject(t, env.conn, "parent-id", "Work")
+	hSeedSubproject(t, env.conn, "child-id", "Alpha", "parent-id")
+
+	out, err := runCmd(t, "projects", "mv", "Alpha", "--parent", "")
+	if err != nil {
+		t.Fatalf("projects mv --parent '': %v", err)
+	}
+	if !cap.called {
+		t.Fatal("expected a project_move sync command to be sent")
+	}
+	if cap.parentID != nil {
+		t.Errorf("expected parent_id null when promoting to root, got %v", cap.parentID)
+	}
+	if !strings.Contains(out, "moved: Alpha -> root") {
+		t.Errorf("expected promote-to-root confirmation, got: %q", out)
+	}
+
+	var parentID any
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT parent_id FROM projects WHERE id = 'child-id'`).Scan(&parentID)
+	if parentID != nil {
+		t.Errorf("expected cache parent_id NULL after promotion, got %v", parentID)
+	}
+}
+
+func TestProjectsMv_RenameAndReparent_Together(t *testing.T) {
+	var cap capturedMove
+	env := newTestEnv(t, makeReparentStub(t, &cap, false))
+	hSeedProject(t, env.conn, "parent-id", "Work")
+	hSeedProject(t, env.conn, "child-id", "Alpha")
+
+	out, err := runCmd(t, "projects", "mv", "Alpha", "Beta", "--parent", "Work")
+	if err != nil {
+		t.Fatalf("projects mv rename+reparent: %v", err)
+	}
+	if !cap.called || cap.parentID != "parent-id" {
+		t.Errorf("expected reparent to Work, got called=%v parent=%v", cap.called, cap.parentID)
+	}
+	if !strings.Contains(out, "renamed: Alpha -> Beta") {
+		t.Errorf("expected rename line in output, got: %q", out)
+	}
+	if !strings.Contains(out, "moved: Beta -> parent Work") {
+		t.Errorf("expected move line to use the new name, got: %q", out)
+	}
+
+	var name, parentID string
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT name, COALESCE(parent_id,'') FROM projects WHERE id = 'child-id'`).Scan(&name, &parentID)
+	if name != "Beta" || parentID != "parent-id" {
+		t.Errorf("expected cache name=Beta parent=parent-id, got name=%q parent=%q", name, parentID)
+	}
+}
+
+func TestProjectsMv_RejectsSelfParent(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+
+	_, err := runCmd(t, "projects", "mv", "Work", "--parent", "Work")
+	if err == nil {
+		t.Fatal("expected error moving a project under itself")
+	}
+	if !strings.Contains(err.Error(), "ancestor") {
+		t.Errorf("expected 'ancestor' in error, got: %v", err)
+	}
+}
+
+func TestProjectsMv_RejectsDescendantParent(t *testing.T) {
+	env := newTestEnv(t, nil)
+	// Work > Alpha > Beta. Moving Work under Beta would create a cycle.
+	hSeedProject(t, env.conn, "work", "Work")
+	hSeedSubproject(t, env.conn, "alpha", "Alpha", "work")
+	hSeedSubproject(t, env.conn, "beta", "Beta", "alpha")
+
+	_, err := runCmd(t, "projects", "mv", "Work", "--parent", "Beta")
+	if err == nil {
+		t.Fatal("expected error moving a project under its own descendant")
+	}
+	if !strings.Contains(err.Error(), "ancestor") {
+		t.Errorf("expected 'ancestor' in error, got: %v", err)
+	}
+}
+
+func TestProjectsMv_UnknownParent_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Alpha")
+
+	_, err := runCmd(t, "projects", "mv", "Alpha", "--parent", "NoSuchParent")
+	if err == nil {
+		t.Fatal("expected error for unknown parent project")
+	}
+}
+
+func TestProjectsMv_SyncCommandFails_ReturnsErrorAndKeepsCache(t *testing.T) {
+	var cap capturedMove
+	env := newTestEnv(t, makeReparentStub(t, &cap, true))
+	hSeedProject(t, env.conn, "parent-id", "Work")
+	hSeedProject(t, env.conn, "child-id", "Alpha")
+
+	_, err := runCmd(t, "projects", "mv", "Alpha", "--parent", "Work")
+	if err == nil {
+		t.Fatal("expected error when sync command reports failure")
+	}
+
+	var parentID any
+	env.conn.QueryRowContext(context.Background(),
+		`SELECT parent_id FROM projects WHERE id = 'child-id'`).Scan(&parentID)
+	if parentID != nil {
+		t.Errorf("expected cache parent unchanged (NULL) on move failure, got %v", parentID)
 	}
 }
 

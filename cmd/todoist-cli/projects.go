@@ -17,6 +17,7 @@ import (
 var (
 	projectsAddParent string
 	projectsRmForce   bool
+	projectsMvParent  string
 )
 
 var projectsCmd = &cobra.Command{
@@ -150,14 +151,26 @@ var projectsRmCmd = &cobra.Command{
 }
 
 var projectsMvCmd = &cobra.Command{
-	Use:               "mv <project> <new-name>",
-	Aliases:           []string{"rename"}, // consistent with `labels rename`
-	Short:             "Rename a project",
-	Args:              cobra.MinimumNArgs(2),
+	Use:     "mv <project> [new-name]",
+	Aliases: []string{"rename"}, // consistent with `labels rename`
+	Short:   "Rename a project and/or move it under a new parent",
+	Long: `Rename a project, move it under a different parent, or both.
+
+Provide a new name to rename, --parent to reparent, or both together.
+Use --parent "" to promote a project back to the top level.`,
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: projectCompleter,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		newName := strings.Join(args[1:], " ")
+
+		reparent := cmd.Flags().Changed("parent")
+		newName := ""
+		if len(args) >= 2 {
+			newName = strings.Join(args[1:], " ")
+		}
+		if newName == "" && !reparent {
+			return fmt.Errorf("nothing to do — provide a new name and/or --parent <project>")
+		}
 
 		conn, err := db.Open()
 		if err != nil {
@@ -170,22 +183,73 @@ var projectsMvCmd = &cobra.Command{
 			return err
 		}
 
+		// Resolve and validate the new parent before mutating anything, so an
+		// invalid reparent never leaves a half-applied rename behind.
+		parentID := ""
+		if reparent && projectsMvParent != "" {
+			parentID, err = tasks.ProjectByName(ctx, conn, projectsMvParent)
+			if err != nil {
+				return err
+			}
+			// The Sync API silently accepts a move that makes a project a
+			// descendant of itself, which corrupts the tree — guard against it.
+			cyclic, err := projectSubtreeContains(ctx, conn, projectID, parentID)
+			if err != nil {
+				return err
+			}
+			if cyclic {
+				return fmt.Errorf("cannot move %q under %q: that would make the project its own ancestor", args[0], projectsMvParent)
+			}
+		}
+
 		token, err := config.GetToken()
 		if err != nil {
 			return err
 		}
 		client := todoist.New(token)
 
-		proj, err := client.UpdateProject(ctx, projectID, todoist.UpdateProjectRequest{Name: newName})
-		if err != nil {
-			return err
+		finalName := args[0]
+		if newName != "" {
+			proj, err := client.UpdateProject(ctx, projectID, todoist.UpdateProjectRequest{Name: newName})
+			if err != nil {
+				return err
+			}
+			conn.ExecContext(ctx, `UPDATE projects SET name = ? WHERE id = ?`, proj.Name, projectID)
+			finalName = proj.Name
+			fmt.Fprintf(cmd.OutOrStdout(), "renamed: %s -> %s\n", args[0], proj.Name)
 		}
 
-		conn.ExecContext(ctx, `UPDATE projects SET name = ? WHERE id = ?`, proj.Name, projectID)
-
-		fmt.Fprintf(cmd.OutOrStdout(), "renamed: %s -> %s\n", args[0], proj.Name)
+		if reparent {
+			if err := client.MoveProjectToParent(ctx, projectID, parentID); err != nil {
+				return explainStaleProject(err, projectsMvParent)
+			}
+			if parentID == "" {
+				conn.ExecContext(ctx, `UPDATE projects SET parent_id = NULL WHERE id = ?`, projectID)
+				fmt.Fprintf(cmd.OutOrStdout(), "moved: %s -> root\n", finalName)
+			} else {
+				conn.ExecContext(ctx, `UPDATE projects SET parent_id = ? WHERE id = ?`, parentID, projectID)
+				fmt.Fprintf(cmd.OutOrStdout(), "moved: %s -> parent %s\n", finalName, projectsMvParent)
+			}
+		}
 		return nil
 	},
+}
+
+// projectSubtreeContains reports whether candidateID is rootID itself or any of
+// its descendants, using the local cache's parent_id links. It answers the
+// reparent cycle question: moving rootID under a project in its own subtree
+// would create a loop.
+func projectSubtreeContains(ctx context.Context, conn *sql.DB, rootID, candidateID string) (bool, error) {
+	var n int
+	err := conn.QueryRowContext(ctx, `
+		WITH RECURSIVE subtree(id) AS (
+			SELECT id FROM projects WHERE id = ?
+			UNION ALL
+			SELECT p.id FROM projects p JOIN subtree s ON p.parent_id = s.id
+		)
+		SELECT COUNT(*) FROM subtree WHERE id = ?`,
+		rootID, candidateID).Scan(&n)
+	return n > 0, err
 }
 
 func printProjects(ctx context.Context, db *sql.DB) error {
@@ -209,6 +273,8 @@ func init() {
 	projectsAddCmd.Flags().StringVar(&projectsAddParent, "parent", "", "parent project name — creates a sub-project")
 	projectsAddCmd.RegisterFlagCompletionFunc("parent", projectCompleter)
 	projectsRmCmd.Flags().BoolVarP(&projectsRmForce, "force", "f", false, "delete even if the project still has tasks")
+	projectsMvCmd.Flags().StringVar(&projectsMvParent, "parent", "", `move under this parent project; "" promotes to top level`)
+	projectsMvCmd.RegisterFlagCompletionFunc("parent", projectCompleter)
 	projectsCmd.AddCommand(projectsAddCmd)
 	projectsCmd.AddCommand(projectsRmCmd)
 	projectsCmd.AddCommand(projectsMvCmd)
