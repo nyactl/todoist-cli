@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0] - 2026-09-23
+
+### Features
+
+- Add --deadline flag to add and edit for Todoist deadlines
+
+
 ## [1.20.0] - 2026-08-18
 
 ### Features
