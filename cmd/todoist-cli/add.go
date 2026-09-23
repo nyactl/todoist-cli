@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
@@ -18,9 +19,20 @@ var (
 	addLabels      []string
 	addDescription string
 	addDue         string
+	addDeadline    string
 	addPriority    int
 	addParent      string
 )
+
+// validateDeadline enforces the strict YYYY-MM-DD form the Todoist deadline
+// field requires — natural language is silently ignored by the API, so an
+// invalid value must error rather than quietly do nothing.
+func validateDeadline(s string) error {
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return fmt.Errorf("deadline must be a date in YYYY-MM-DD format (got %q)", s)
+	}
+	return nil
+}
 
 var addCmd = &cobra.Command{
 	Use:               "add <content>",
@@ -49,7 +61,12 @@ var addCmd = &cobra.Command{
 		if addParent != "" && addSection != "" {
 			return fmt.Errorf("--parent and --section cannot be used together")
 		}
-		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue, Priority: addPriority}
+		if addDeadline != "" {
+			if err := validateDeadline(addDeadline); err != nil {
+				return err
+			}
+		}
+		req := todoist.CreateTaskRequest{Content: content, Description: addDescription, DueString: addDue, DeadlineDate: addDeadline, Priority: addPriority}
 		projectLabel := ""
 		if addParent != "" {
 			parent, err := tasks.ByID(ctx, conn, addParent)
@@ -200,6 +217,7 @@ func init() {
 	addCmd.Flags().StringArrayVarP(&addLabels, "label", "l", nil, "label name (repeatable: -l <name> -l <name>)")
 	addCmd.Flags().StringVarP(&addDescription, "description", "d", "", "task description")
 	addCmd.Flags().StringVarP(&addDue, "due", "D", "", "due date in natural language (e.g. \"tomorrow\", \"every monday\")")
+	addCmd.Flags().StringVar(&addDeadline, "deadline", "", "deadline date, strict YYYY-MM-DD (e.g. 2026-09-30)")
 	addCmd.Flags().IntVarP(&addPriority, "priority", "P", 0, "priority 1–4 (1=normal, 4=urgent)")
 	addCmd.Flags().StringVar(&addParent, "parent", "", "parent task (name, ID, or prefix) — creates a subtask")
 	addCmd.RegisterFlagCompletionFunc("parent", taskCompleter)

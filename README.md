@@ -86,12 +86,14 @@ export TODOIST_TOKEN=your_token_here
 | `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |
 | `add <content>` | Create a task in the active project |
 | `add -D <due>` | Natural language due date — e.g. `"tomorrow"`, `"every monday"` |
+| `add --deadline <date>` | Set a deadline (strict `YYYY-MM-DD`, e.g. `2026-09-30`) |
 | `add -p <project>` | Override project |
 | `add -l <label>` | Attach label (repeatable) |
 | `add -P <1-4>` | Set priority (1=normal, 4=urgent) |
 | `add --parent <task>` | Create as subtask of the given task |
 | `done <task>` | Mark a task complete |
-| `edit <task>` | Edit content, due date, priority, description, labels or project |
+| `edit <task>` | Edit content, due date, deadline, priority, description, labels or project |
+| `edit <task> --deadline <date>` | Set a deadline (strict `YYYY-MM-DD`); pass `--deadline ""` to clear it |
 | `edit <task> -l <label>` | Replace the entire label set (repeatable) |
 | `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
 | `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |

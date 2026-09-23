@@ -122,6 +122,51 @@ func TestEdit_ClearsDueDate(t *testing.T) {
 	}
 }
 
+func TestEdit_SetsDeadline(t *testing.T) {
+	var sentFields map[string]any
+	stub := makeEditStub(t, "task1", func(f map[string]any) { sentFields = f },
+		todoist.Task{ID: "task1", Content: "Task", Priority: 1})
+
+	env := newTestEnv(t, stub)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task1", "Task", "p1", "")
+
+	if _, err := runCmd(t, "edit", "Task", "--deadline", "2026-09-30"); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	if sentFields["deadline_date"] != "2026-09-30" {
+		t.Errorf("expected deadline_date '2026-09-30' sent to API, got: %v", sentFields)
+	}
+}
+
+func TestEdit_ClearsDeadline(t *testing.T) {
+	var sentFields map[string]any
+	stub := makeEditStub(t, "task1", func(f map[string]any) { sentFields = f },
+		todoist.Task{ID: "task1", Content: "Task", Priority: 1})
+
+	env := newTestEnv(t, stub)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task1", "Task", "p1", "")
+
+	if _, err := runCmd(t, "edit", "Task", "--deadline", ""); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	// Empty must be sent as an explicit null, not omitted.
+	if v, ok := sentFields["deadline_date"]; !ok || v != nil {
+		t.Errorf("expected deadline_date: null sent to API, got: %v (present=%v)", sentFields, ok)
+	}
+}
+
+func TestEdit_InvalidDeadline_Errors(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task1", "Task", "p1", "")
+
+	if _, err := runCmd(t, "edit", "Task", "--deadline", "tomorrow"); err == nil {
+		t.Fatal("expected error for non-YYYY-MM-DD deadline")
+	}
+}
+
 func TestEdit_UpdatesLabels(t *testing.T) {
 	var sentFields map[string]any
 	stub := makeEditStub(t, "task1", func(f map[string]any) { sentFields = f },

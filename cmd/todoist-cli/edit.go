@@ -38,6 +38,7 @@ func applyLabelDelta(current, add, remove []string) []string {
 var (
 	editContent      string
 	editDue          string
+	editDeadline     string
 	editPriority     int
 	editDescription  string
 	editLabels       []string
@@ -104,6 +105,16 @@ var editCmd = &cobra.Command{
 		if cmd.Flags().Changed("due") {
 			fields["due_string"] = editDue // empty string clears the due date
 		}
+		if cmd.Flags().Changed("deadline") {
+			if editDeadline == "" {
+				fields["deadline_date"] = nil // null clears the deadline
+			} else {
+				if err := validateDeadline(editDeadline); err != nil {
+					return err
+				}
+				fields["deadline_date"] = editDeadline
+			}
+		}
 
 		var updated *todoist.Task
 		if len(fields) > 0 {
@@ -144,6 +155,7 @@ var editCmd = &cobra.Command{
 func init() {
 	editCmd.Flags().StringVarP(&editContent, "content", "c", "", "replace task title")
 	editCmd.Flags().StringVarP(&editDue, "due", "D", "", "due date in natural language; empty string clears it")
+	editCmd.Flags().StringVar(&editDeadline, "deadline", "", "deadline date, strict YYYY-MM-DD; empty string clears it")
 	editCmd.Flags().IntVarP(&editPriority, "priority", "P", 0, "priority 1–4 (1=normal, 4=urgent)")
 	editCmd.Flags().StringVarP(&editDescription, "description", "d", "", "replace description")
 	editCmd.Flags().StringArrayVarP(&editLabels, "label", "l", nil, "replace labels (repeatable: -l urgent -l work)")

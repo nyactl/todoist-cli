@@ -168,6 +168,72 @@ func TestAdd_NegativePriority_Errors(t *testing.T) {
 	}
 }
 
+func TestAdd_WithDeadline_SendsDeadlineDate(t *testing.T) {
+	var req todoist.CreateTaskRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, todoist.Task{ID: "t-dl", Content: "Task"})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	if _, err := runCmd(t, "add", "Task", "--deadline", "2026-09-30"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if req.DeadlineDate != "2026-09-30" {
+		t.Errorf("expected deadline_date '2026-09-30' sent to API, got %q", req.DeadlineDate)
+	}
+}
+
+func TestAdd_WithoutDeadline_OmitsField(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, todoist.Task{ID: "t-nod", Content: "Task"})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"})
+
+	if _, err := runCmd(t, "add", "Task"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, ok := body["deadline_date"]; ok {
+		t.Error("expected deadline_date absent from request when not specified")
+	}
+}
+
+func TestAdd_InvalidDeadline_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+	if _, err := runCmd(t, "add", "Task", "--deadline", "31-12-2026"); err == nil {
+		t.Fatal("expected error for non-YYYY-MM-DD deadline")
+	}
+}
+
+func TestValidateDeadline(t *testing.T) {
+	if err := validateDeadline("2026-09-30"); err != nil {
+		t.Errorf("valid date rejected: %v", err)
+	}
+	for _, bad := range []string{"tomorrow", "next friday", "2026-13-40", "31-12-2026", "2026/09/30", "2026-9-3", ""} {
+		if err := validateDeadline(bad); err == nil {
+			t.Errorf("expected error for %q, got nil", bad)
+		}
+	}
+}
+
 func TestAdd_WithoutProject_ErrorWhenSectionGiven(t *testing.T) {
 	env := newTestEnv(t, emptyAPI())
 	hSeedProject(t, env.conn, "p1", "Work")
