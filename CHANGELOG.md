@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0] - 2026-09-23
+
+### Features
+
+- Reparent projects via projects mv --parent
+
+
 ## [1.21.0] - 2026-09-23
 
 ### Features
