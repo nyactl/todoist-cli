@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0] - 2026-09-25
+
+### Features
+
+- Add comment ls and comment rm to list and delete task comments
+
+
 ## [1.22.0] - 2026-09-23
 
 ### Features
