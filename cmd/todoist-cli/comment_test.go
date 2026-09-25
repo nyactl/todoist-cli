@@ -118,6 +118,112 @@ func TestComment_APIError_ReturnsError(t *testing.T) {
 	}
 }
 
+// --- comment ls ---
+
+func TestCommentLs_ListsIDTimestampAndFirstLine(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.URL.Query().Get("task_id"); got != "task-abc" {
+			t.Errorf("expected task_id 'task-abc' in query, got %q", got)
+		}
+		writeJSON(w, map[string]any{
+			"results": []todoist.Comment{
+				{ID: "cmt-1", TaskID: "task-abc", Content: "first line\nsecond line", PostedAt: "2026-06-04T12:00:00.000000Z"},
+				{ID: "cmt-2", TaskID: "task-abc", Content: "single line", PostedAt: "2026-06-05T09:30:00.000000Z"},
+			},
+			"next_cursor": nil,
+		})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Fix bug", "p1", "")
+
+	out, err := runCmd(t, "comment", "ls", "Fix bug")
+	if err != nil {
+		t.Fatalf("comment ls: %v", err)
+	}
+	if !strings.Contains(out, "cmt-1\t") || !strings.Contains(out, "cmt-2\t") {
+		t.Errorf("expected full comment IDs in output, got: %q", out)
+	}
+	if !strings.Contains(out, "first line") {
+		t.Errorf("expected first line of multi-line comment, got: %q", out)
+	}
+	if strings.Contains(out, "second line") {
+		t.Errorf("expected only the first line, but second line leaked: %q", out)
+	}
+}
+
+func TestCommentLs_EmptyTaskPrintsNothing(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"results": []todoist.Comment{}, "next_cursor": nil})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "t1", "No comments here", "p1", "")
+
+	out, err := runCmd(t, "comment", "ls", "No comments here")
+	if err != nil {
+		t.Fatalf("comment ls: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("expected empty output for a task with no comments, got: %q", out)
+	}
+}
+
+func TestCommentLs_UnknownTask_Errors(t *testing.T) {
+	newTestEnv(t, nil)
+
+	_, err := runCmd(t, "comment", "ls", "no-such-task")
+	if err == nil {
+		t.Fatal("expected error for unknown task, got nil")
+	}
+}
+
+// --- comment rm ---
+
+func TestCommentRm_DeletesViaAPI(t *testing.T) {
+	var deletedID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.NotFound(w, r)
+			return
+		}
+		deletedID = strings.TrimPrefix(r.URL.Path, "/comments/")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	newTestEnv(t, mux)
+
+	out, err := runCmd(t, "comment", "rm", "cmt-xyz")
+	if err != nil {
+		t.Fatalf("comment rm: %v", err)
+	}
+	if deletedID != "cmt-xyz" {
+		t.Errorf("expected DELETE called with 'cmt-xyz', got %q", deletedID)
+	}
+	if !strings.Contains(out, "deleted: cmt-xyz") {
+		t.Errorf("expected deletion confirmation, got: %q", out)
+	}
+}
+
+func TestCommentRm_APIError_ReturnsError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"Invalid argument value"}`, http.StatusBadRequest)
+	})
+	newTestEnv(t, mux)
+
+	_, err := runCmd(t, "comment", "rm", "bad-id")
+	if err == nil {
+		t.Fatal("expected error when API rejects the comment ID, got nil")
+	}
+}
+
 func TestComment_ResolvesTaskByPrefix(t *testing.T) {
 	var gotTaskID string
 	mux := http.NewServeMux()

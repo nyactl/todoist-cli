@@ -108,6 +108,8 @@ export TODOIST_TOKEN=your_token_here
 | `search <query>` | Search tasks by content or description across all projects |
 | `search -i <query>` | Same, prepending the full task ID to each line (for scripting) |
 | `comment <task> <text>` | Add a comment to a task |
+| `comment ls <task>` | List a task's comments — id, timestamp, first line (tab-separated) |
+| `comment rm <comment-id>` | Delete a comment by its ID (from `comment ls`) |
 | `overdue` | Triage overdue tasks interactively (done, reschedule, skip) |
 | `pick` | Fuzzy-pick a task with fzf — prints ID for shell composition |
 | `pick -l <label>` | Pick from label-filtered tasks |

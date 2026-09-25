@@ -22,3 +22,12 @@ func (c *Client) PostComment(ctx context.Context, taskID, content string) (*Comm
 		"content": content,
 	}, &comment)
 }
+
+func (c *Client) DeleteComment(ctx context.Context, commentID string) error {
+	resp, err := c.do(ctx, "DELETE", "/comments/"+commentID, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
