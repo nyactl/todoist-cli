@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0] - 2026-09-30
+
+### Features
+
+- Comment show, multi-id and --all rm, and rm echoes deleted details
+
+
 ## [1.23.1] - 2026-09-30
 
 ### Bug Fixes
