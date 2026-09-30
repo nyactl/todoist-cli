@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0] - 2026-09-30
+
+### Features
+
+- Include recurrence string in show --json due object
+
+
 ## [1.24.0] - 2026-09-30
 
 ### Features
