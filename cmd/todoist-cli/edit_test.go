@@ -116,9 +116,10 @@ func TestEdit_ClearsDueDate(t *testing.T) {
 	if _, err := runCmd(t, "edit", "Task", "-D", ""); err != nil {
 		t.Fatalf("edit: %v", err)
 	}
-	// Empty string must be explicitly sent — not omitted
-	if v, ok := sentFields["due_string"]; !ok || v != "" {
-		t.Errorf("expected due_string: '' sent to API, got: %v", sentFields)
+	// The API ignores an empty due_string, so clearing must send the "no date"
+	// natural-language form instead (issue #27).
+	if v, ok := sentFields["due_string"]; !ok || v != "no date" {
+		t.Errorf(`expected due_string: "no date" sent to API, got: %v`, sentFields)
 	}
 }
 

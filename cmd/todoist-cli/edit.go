@@ -103,7 +103,13 @@ var editCmd = &cobra.Command{
 			fields["labels"] = applyLabelDelta(current, editAddLabels, editRemoveLabels)
 		}
 		if cmd.Flags().Changed("due") {
-			fields["due_string"] = editDue // empty string clears the due date
+			if editDue == "" {
+				// The API silently ignores an empty due_string; "no date" is the
+				// natural-language form Todoist recognizes as clearing the due date.
+				fields["due_string"] = "no date"
+			} else {
+				fields["due_string"] = editDue
+			}
 		}
 		if cmd.Flags().Changed("deadline") {
 			if editDeadline == "" {
