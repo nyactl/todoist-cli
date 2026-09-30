@@ -23,6 +23,11 @@ func (c *Client) PostComment(ctx context.Context, taskID, content string) (*Comm
 	}, &comment)
 }
 
+func (c *Client) GetComment(ctx context.Context, commentID string) (*Comment, error) {
+	var comment Comment
+	return &comment, c.doJSON(ctx, "GET", "/comments/"+commentID, nil, &comment)
+}
+
 func (c *Client) DeleteComment(ctx context.Context, commentID string) error {
 	resp, err := c.do(ctx, "DELETE", "/comments/"+commentID, nil)
 	if err != nil {

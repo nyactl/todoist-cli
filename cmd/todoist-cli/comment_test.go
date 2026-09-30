@@ -186,28 +186,194 @@ func TestCommentLs_UnknownTask_Errors(t *testing.T) {
 
 // --- comment rm ---
 
-func TestCommentRm_DeletesViaAPI(t *testing.T) {
-	var deletedID string
+// commentByIDStub serves GET and DELETE on /comments/{id}, recording deletes.
+func commentByIDStub(t *testing.T, deleted *[]string) http.Handler {
+	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
+		id := strings.TrimPrefix(r.URL.Path, "/comments/")
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, todoist.Comment{ID: id, Content: id + " body\nsecond line", PostedAt: "2026-06-04T12:00:00.000000Z"})
+		case http.MethodDelete:
+			*deleted = append(*deleted, id)
+			w.WriteHeader(http.StatusNoContent)
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		deletedID = strings.TrimPrefix(r.URL.Path, "/comments/")
-		w.WriteHeader(http.StatusNoContent)
 	})
-	newTestEnv(t, mux)
+	return mux
+}
+
+func TestCommentRm_DeletesAndEchoesDetails(t *testing.T) {
+	var deleted []string
+	newTestEnv(t, commentByIDStub(t, &deleted))
 
 	out, err := runCmd(t, "comment", "rm", "cmt-xyz")
 	if err != nil {
 		t.Fatalf("comment rm: %v", err)
 	}
-	if deletedID != "cmt-xyz" {
-		t.Errorf("expected DELETE called with 'cmt-xyz', got %q", deletedID)
+	if len(deleted) != 1 || deleted[0] != "cmt-xyz" {
+		t.Errorf("expected DELETE of 'cmt-xyz', got %v", deleted)
 	}
-	if !strings.Contains(out, "deleted: cmt-xyz") {
-		t.Errorf("expected deletion confirmation, got: %q", out)
+	// Echo must carry the ID, timestamp and first line — first line only (#26).
+	if !strings.Contains(out, "deleted: cmt-xyz\t") {
+		t.Errorf("expected 'deleted: cmt-xyz' with details, got: %q", out)
+	}
+	if !strings.Contains(out, "cmt-xyz body") {
+		t.Errorf("expected first line in echo, got: %q", out)
+	}
+	if strings.Contains(out, "second line") {
+		t.Errorf("expected only first line in echo, got: %q", out)
+	}
+}
+
+func TestCommentRm_MultipleIDs(t *testing.T) {
+	var deleted []string
+	newTestEnv(t, commentByIDStub(t, &deleted))
+
+	if _, err := runCmd(t, "comment", "rm", "c1", "c2", "c3"); err != nil {
+		t.Fatalf("comment rm: %v", err)
+	}
+	if len(deleted) != 3 {
+		t.Fatalf("expected 3 deletes, got %v", deleted)
+	}
+	for i, want := range []string{"c1", "c2", "c3"} {
+		if deleted[i] != want {
+			t.Errorf("delete %d: expected %q, got %q", i, want, deleted[i])
+		}
+	}
+}
+
+func TestCommentRm_All_PromptConfirmed(t *testing.T) {
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results": []todoist.Comment{
+				{ID: "a1", Content: "first", PostedAt: "2026-06-04T12:00:00.000000Z"},
+				{ID: "a2", Content: "second", PostedAt: "2026-06-05T12:00:00.000000Z"},
+			},
+			"next_cursor": nil,
+		})
+	})
+	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/comments/"))
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Clean me", "p1", "")
+
+	setStdin(t, "y\n")
+	out, err := runCmd(t, "comment", "rm", "--all", "Clean me")
+	if err != nil {
+		t.Fatalf("comment rm --all: %v", err)
+	}
+	if len(deleted) != 2 {
+		t.Errorf("expected both comments deleted, got %v", deleted)
+	}
+	if !strings.Contains(out, "delete all 2 comment(s)") {
+		t.Errorf("expected confirmation prompt, got: %q", out)
+	}
+}
+
+func TestCommentRm_All_Aborted(t *testing.T) {
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results":     []todoist.Comment{{ID: "a1", Content: "keep me", PostedAt: "2026-06-04T12:00:00.000000Z"}},
+			"next_cursor": nil,
+		})
+	})
+	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/comments/"))
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Keep", "p1", "")
+
+	setStdin(t, "n\n")
+	out, err := runCmd(t, "comment", "rm", "--all", "Keep")
+	if err != nil {
+		t.Fatalf("comment rm --all (abort): %v", err)
+	}
+	if len(deleted) != 0 {
+		t.Errorf("expected no deletes when aborted, got %v", deleted)
+	}
+	if !strings.Contains(out, "aborted") {
+		t.Errorf("expected 'aborted' in output, got: %q", out)
+	}
+}
+
+func TestCommentRm_All_ForceSkipsPrompt(t *testing.T) {
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results":     []todoist.Comment{{ID: "a1", Content: "gone", PostedAt: "2026-06-04T12:00:00.000000Z"}},
+			"next_cursor": nil,
+		})
+	})
+	mux.HandleFunc("/comments/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/comments/"))
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Force", "p1", "")
+
+	// No setStdin — -f must not read from stdin.
+	if _, err := runCmd(t, "comment", "rm", "--all", "-f", "Force"); err != nil {
+		t.Fatalf("comment rm --all -f: %v", err)
+	}
+	if len(deleted) != 1 {
+		t.Errorf("expected the comment deleted without a prompt, got %v", deleted)
+	}
+}
+
+func TestCommentRm_All_NoComments(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"results": []todoist.Comment{}, "next_cursor": nil})
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-abc", "Empty", "p1", "")
+
+	out, err := runCmd(t, "comment", "rm", "--all", "Empty")
+	if err != nil {
+		t.Fatalf("comment rm --all (empty): %v", err)
+	}
+	if !strings.Contains(out, "no comments") {
+		t.Errorf("expected 'no comments' message, got: %q", out)
+	}
+}
+
+func TestCommentShow_PrintsFullBody(t *testing.T) {
+	var deleted []string
+	newTestEnv(t, commentByIDStub(t, &deleted))
+
+	out, err := runCmd(t, "comment", "show", "cmt-1")
+	if err != nil {
+		t.Fatalf("comment show: %v", err)
+	}
+	// Full body, including lines that `ls`/`rm` would truncate.
+	if !strings.Contains(out, "cmt-1 body") || !strings.Contains(out, "second line") {
+		t.Errorf("expected full multi-line body, got: %q", out)
+	}
+	if len(deleted) != 0 {
+		t.Errorf("comment show must not delete anything, got %v", deleted)
 	}
 }
 

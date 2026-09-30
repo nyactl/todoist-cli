@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"strings"
 
@@ -92,29 +93,144 @@ var commentLsCmd = &cobra.Command{
 	},
 }
 
-var commentRmCmd = &cobra.Command{
-	Use:               "rm <comment-id>",
-	Short:             "Delete a comment by its ID (from `comment ls`)",
-	Args:              cobra.ExactArgs(1),
+var commentShowCmd = &cobra.Command{
+	Use:               "show <comment-id>...",
+	Short:             "Print the full body of one or more comments",
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+
 		token, err := config.GetToken()
 		if err != nil {
 			return err
 		}
 		client := todoist.New(token)
 
-		if err := client.DeleteComment(cmd.Context(), args[0]); err != nil {
-			return fmt.Errorf("delete comment %q (pass a full comment ID from `todoist-cli comment ls <task>`): %w", args[0], err)
+		out := cmd.OutOrStdout()
+		for i, id := range args {
+			c, err := client.GetComment(ctx, id)
+			if err != nil {
+				return fmt.Errorf("get comment %q (pass a full comment ID from `todoist-cli comment ls <task>`): %w", id, err)
+			}
+			if i > 0 {
+				fmt.Fprintln(out)
+			}
+			fmt.Fprintf(out, "%s  %s\n", c.ID, formatCommentTime(c.PostedAt))
+			fmt.Fprintf(out, "%s\n", c.Content)
 		}
-
-		fmt.Fprintf(cmd.OutOrStdout(), "deleted: %s\n", args[0])
 		return nil
 	},
 }
 
+var (
+	commentRmAll   bool
+	commentRmForce bool
+)
+
+var commentRmCmd = &cobra.Command{
+	Use:               "rm <comment-id>... | --all <task>",
+	Short:             "Delete comments by ID, or every comment on a task with --all",
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: cobra.NoFileCompletions,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+
+		token, err := config.GetToken()
+		if err != nil {
+			return err
+		}
+		client := todoist.New(token)
+
+		if commentRmAll {
+			return commentRmAllOnTask(cmd, client, args)
+		}
+
+		// Delete each ID, echoing what was removed — comments have no undo, so a
+		// bare ID in the terminal log is not enough to audit afterwards (#26).
+		out := cmd.OutOrStdout()
+		var failed int
+		for _, id := range args {
+			c, err := client.GetComment(ctx, id)
+			if err != nil {
+				fmt.Fprintf(out, "error: %s: %v\n", id, err)
+				failed++
+				continue
+			}
+			if err := client.DeleteComment(ctx, id); err != nil {
+				fmt.Fprintf(out, "error: %s: %v\n", id, err)
+				failed++
+				continue
+			}
+			fmt.Fprintf(out, "deleted: %s\t%s\t%s\n", id, formatCommentTime(c.PostedAt), firstLine(c.Content))
+		}
+		if failed > 0 {
+			return fmt.Errorf("%d of %d comment(s) could not be deleted", failed, len(args))
+		}
+		return nil
+	},
+}
+
+// commentRmAllOnTask deletes every comment on a task, prompting first unless
+// forced — the one destructive variant of `comment rm`.
+func commentRmAllOnTask(cmd *cobra.Command, client *todoist.Client, args []string) error {
+	ctx := cmd.Context()
+	if len(args) != 1 {
+		return fmt.Errorf("--all takes exactly one task")
+	}
+
+	conn, err := db.Open()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	task, err := tasks.ByID(ctx, conn, args[0])
+	if err != nil {
+		return err
+	}
+
+	comments, err := client.GetComments(ctx, task.ID)
+	if err != nil {
+		return err
+	}
+
+	out := cmd.OutOrStdout()
+	if len(comments) == 0 {
+		fmt.Fprintf(out, "no comments on %s\n", shortID(task.ID))
+		return nil
+	}
+
+	if !commentRmForce {
+		fmt.Fprintf(out, "delete all %d comment(s) on %q? [y/N] ", len(comments), task.Content)
+		scanner := bufio.NewScanner(cmd.InOrStdin())
+		if !scanner.Scan() {
+			return nil
+		}
+		ans := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		if ans != "y" && ans != "yes" {
+			fmt.Fprintln(out, "aborted")
+			return nil
+		}
+	}
+
+	var failed int
+	for _, c := range comments {
+		if err := client.DeleteComment(ctx, c.ID); err != nil {
+			fmt.Fprintf(out, "error: %s: %v\n", c.ID, err)
+			failed++
+			continue
+		}
+		fmt.Fprintf(out, "deleted: %s\t%s\t%s\n", c.ID, formatCommentTime(c.PostedAt), firstLine(c.Content))
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d of %d comment(s) could not be deleted", failed, len(comments))
+	}
+	return nil
+}
+
 // firstLine returns the first line of s, so a multi-line comment stays on one
-// row in `comment ls`.
+// row in `comment ls` and the `comment rm` echo.
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
@@ -123,7 +239,10 @@ func firstLine(s string) string {
 }
 
 func init() {
+	commentRmCmd.Flags().BoolVar(&commentRmAll, "all", false, "delete every comment on the given task (prompts unless -f)")
+	commentRmCmd.Flags().BoolVarP(&commentRmForce, "force", "f", false, "skip the confirmation prompt for --all")
 	commentCmd.AddCommand(commentLsCmd)
+	commentCmd.AddCommand(commentShowCmd)
 	commentCmd.AddCommand(commentRmCmd)
 	root.AddCommand(commentCmd)
 }
