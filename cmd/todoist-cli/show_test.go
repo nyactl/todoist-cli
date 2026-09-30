@@ -16,7 +16,7 @@ func TestShow_JSON_FullObject(t *testing.T) {
 		ID: "task-j", Content: "Review budget", Description: "Focus on infra.",
 		ProjectID: "p1", SectionID: "s1", Priority: 3,
 		Labels:    []string{"finance", "review"},
-		Due:       &todoist.Due{Date: "2026-09-01", Datetime: dt, IsRecurring: true},
+		Due:       &todoist.Due{Date: "2026-09-01", Datetime: dt, IsRecurring: true, String: "every month"},
 		Deadline:  &todoist.Deadline{Date: "2026-09-05"},
 		CreatedAt: "2026-07-15T09:12:00Z",
 		URL:       "https://todoist.com/app/task/task-j",
@@ -56,6 +56,10 @@ func TestShow_JSON_FullObject(t *testing.T) {
 	if due["date"] != "2026-09-01" || due["datetime"] != dt || due["recurring"] != true {
 		t.Errorf("due = %v", due)
 	}
+	// Recurrence pattern must be surfaced so tooling can record *how* it recurs (#23).
+	if due["string"] != "every month" {
+		t.Errorf(`due["string"] = %v, want "every month"`, due["string"])
+	}
 	cs := got["comments"].([]any)
 	if len(cs) != 1 {
 		t.Fatalf("expected 1 comment, got %d", len(cs))
@@ -94,6 +98,28 @@ func TestShow_JSON_NullAndArrayFields(t *testing.T) {
 	// JSON includes the project even when it is Inbox (unlike the human view)
 	if got["project"] != "Inbox" {
 		t.Errorf("project = %v, want Inbox", got["project"])
+	}
+}
+
+func TestShow_JSON_DueStringNullWhenAbsent(t *testing.T) {
+	// due present but no recurrence/string available → string must serialize null.
+	task := todoist.Task{ID: "task-ds", Content: "One-off", ProjectID: "p1",
+		Due: &todoist.Due{Date: "2026-10-01"}}
+	env := newTestEnv(t, commentStub(task, nil, nil))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-ds", "One-off", "p1", "")
+
+	out, err := runCmd(t, "show", "task-ds", "--json")
+	if err != nil {
+		t.Fatalf("show --json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	due := got["due"].(map[string]any)
+	if v, present := due["string"]; !present || v != nil {
+		t.Errorf(`expected due["string"] null, got %v (present=%v)`, v, present)
 	}
 }
 

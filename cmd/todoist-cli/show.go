@@ -186,6 +186,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.C
 		Date      string  `json:"date"`
 		Datetime  *string `json:"datetime"`
 		Recurring bool    `json:"recurring"`
+		String    *string `json:"string"`
 	}
 	type jsonComment struct {
 		ID       string `json:"id"`
@@ -222,7 +223,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.C
 		out.Labels = t.Labels
 	}
 	if t.Due != nil {
-		out.Due = &jsonDue{Date: t.Due.Date, Datetime: nilIfEmpty(t.Due.Datetime), Recurring: t.Due.IsRecurring}
+		out.Due = &jsonDue{Date: t.Due.Date, Datetime: nilIfEmpty(t.Due.Datetime), Recurring: t.Due.IsRecurring, String: nilIfEmpty(t.Due.String)}
 	}
 	if t.Deadline != nil {
 		out.Deadline = nilIfEmpty(t.Deadline.Date)
