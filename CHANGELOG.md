@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.23.1] - 2026-09-30
+
+### Bug Fixes
+
+- Edit -D "" now clears the due date instead of silently no-op
+
+### CI
+
+- Add a temporary tap token check
+- Drop the temporary tap token check
+
+
 ## [1.23.0] - 2026-09-25
 
 ### Features
