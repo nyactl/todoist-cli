@@ -1,0 +1,17 @@
+name: Tap token check
+
+# Temporary, manual only: verifies TAP_GITHUB_TOKEN can still read and write the
+# tap, which is the first call the release pipeline makes.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check tap access
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          gh api repos/nyactl/homebrew-tap \
+            --jq '"push=\(.permissions.push) default_branch=\(.default_branch)"'
