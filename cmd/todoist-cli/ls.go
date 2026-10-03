@@ -23,7 +23,16 @@ var (
 	lsBoard     bool
 	lsPriority  int
 	lsRecursive bool
+	lsGlobal    bool
 )
+
+// contextScopeNote explains that an empty (or partial) result came from the
+// active project context and how to widen the search — so a context-scoped
+// query is never mistaken for an account-wide one (issue #28), mirroring the
+// --done cue from #16.
+func contextScopeNote(projectName string) string {
+	return fmt.Sprintf("in %q — run 'todoist-cli cd' to clear the context (or pass --global) to search all projects", projectName)
+}
 
 // validateLabels errors on any label name that is neither a personal label nor
 // present on a cached task, turning typos and unsupported negation syntax
@@ -60,6 +69,9 @@ context is set, or within the active project). It is not limited to the agenda v
 --not-label excludes tasks carrying a label; it composes with -l. An unknown label
 name (including unsupported negation like -l '!x') is reported as an error.
 
+-g/--global ignores the active project context for this one invocation, so label,
+priority and --done queries run account-wide without changing your cd context.
+
 Use --done [period] to review completed tasks (live API call).
 Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -72,6 +84,14 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		if lsRecursive && lsBoard {
 			return fmt.Errorf("--recursive and --board cannot be combined")
 		}
+		// --board and --recursive act on the active project; with --global there
+		// is no project to act on, so the combination is contradictory.
+		if lsGlobal && lsBoard {
+			return fmt.Errorf("--global and --board cannot be combined")
+		}
+		if lsGlobal && lsRecursive {
+			return fmt.Errorf("--global and --recursive cannot be combined")
+		}
 		conn, err := db.Open()
 		if err != nil {
 			return err
@@ -83,13 +103,16 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		if err != nil {
 			return err
 		}
+		// scoped is true only when a context is active and not overridden by
+		// --global; every context-sensitive branch below keys off it.
+		scoped := st.HasProject() && !lsGlobal
 
 		if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
 			if err := validateLabels(ctx, conn, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
 				return err
 			}
 			projectID := ""
-			if st.HasProject() {
+			if scoped {
 				projectID = st.ProjectID
 			}
 			ts, err := tasks.ByLabelFilter(ctx, conn, lsLabels, lsNotLabels, projectID)
@@ -98,14 +121,18 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
 			if len(ts) == 0 {
-				fmt.Println("no tasks")
+				if scoped {
+					fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
+				} else {
+					fmt.Println("no tasks")
+				}
 				return nil
 			}
 			printByProject(ts)
 			return nil
 		}
 
-		if st.HasProject() {
+		if scoped {
 			var ts []tasks.Task
 			if lsRecursive {
 				ts, err = tasks.BySubtree(ctx, conn, st.ProjectID)
@@ -117,7 +144,7 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
 			if len(ts) == 0 {
-				fmt.Println("no tasks")
+				fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
 				return nil
 			}
 			switch {
@@ -167,7 +194,12 @@ func runLsDone(cmd *cobra.Command) error {
 		return err
 	}
 	client := todoist.New(token)
-	res, err := client.GetCompletedSince(ctx, since, st.ProjectID)
+	scoped := st.HasProject() && !lsGlobal
+	projectID := ""
+	if scoped {
+		projectID = st.ProjectID
+	}
+	res, err := client.GetCompletedSince(ctx, since, projectID)
 	if err != nil {
 		return fmt.Errorf("fetch completed: %w", err)
 	}
@@ -186,15 +218,15 @@ func runLsDone(cmd *cobra.Command) error {
 		// Completed queries are scoped to the active project context. Without a
 		// cue, an empty result reads as "completed tasks are broken" when really
 		// the context just has none (issue #16).
-		if st.HasProject() {
-			fmt.Printf("nothing completed in %q — run 'todoist-cli cd' to clear the context and search all projects\n", st.ProjectName)
+		if scoped {
+			fmt.Printf("nothing completed %s\n", contextScopeNote(st.ProjectName))
 		} else {
 			fmt.Println("nothing completed")
 		}
 		return nil
 	}
 
-	if st.HasProject() {
+	if scoped {
 		for _, t := range items {
 			printCompleted(t)
 		}
@@ -629,6 +661,7 @@ func init() {
 	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
 	lsCmd.Flags().BoolVarP(&lsRecursive, "recursive", "r", false, "include tasks from sub-projects of the active project, grouped by project")
 	lsCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
+	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "ignore the active project context; search all projects")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	lsCmd.RegisterFlagCompletionFunc("not-label", labelCompleter)

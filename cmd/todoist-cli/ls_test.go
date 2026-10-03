@@ -200,6 +200,103 @@ func TestLs_LabelFilter_NoContext_FindsUndatedAcrossProjects(t *testing.T) {
 	}
 }
 
+// --- issue #28: context-scoped label queries must not masquerade as account-wide ---
+
+func TestLs_LabelFilter_ContextEmpty_ShowsScopeHint(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Home")
+	// The label exists account-wide, but only on a task in another project.
+	hSeedTask(t, env.conn, "t1", "waiting at home", "p2", "")
+	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'waiting')`)
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "-l", "waiting")
+	if err != nil {
+		t.Fatalf("ls -l: %v", err)
+	}
+	// Empty result must name the context and offer both escape hatches.
+	if !strings.Contains(out, `"Work"`) {
+		t.Errorf("expected the context name in the hint, got: %q", out)
+	}
+	if !strings.Contains(out, "clear the context") || !strings.Contains(out, "--global") {
+		t.Errorf("expected cd and --global cues, got: %q", out)
+	}
+}
+
+func TestLs_Global_LabelSearchesAcrossProjects(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Home")
+	hSeedTask(t, env.conn, "t1", "waiting in work", "p1", "")
+	hSeedTask(t, env.conn, "t2", "waiting at home", "p2", "")
+	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'waiting')`)
+	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('t2', 'waiting')`)
+	// Context is Work, but --global must ignore it.
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "-l", "waiting", "--global")
+	if err != nil {
+		t.Fatalf("ls -l --global: %v", err)
+	}
+	if !strings.Contains(out, "waiting in work") || !strings.Contains(out, "waiting at home") {
+		t.Errorf("expected labelled tasks from both projects, got: %q", out)
+	}
+}
+
+func TestLs_Global_EmptyMessageHasNoScopeHint(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedLabel(t, env.conn, "l1", "waiting", 0) // known personal label, on no tasks
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "-l", "waiting", "--global")
+	if err != nil {
+		t.Fatalf("ls -l --global: %v", err)
+	}
+	if strings.Contains(out, "clear the context") {
+		t.Errorf("--global must not emit the context hint, got: %q", out)
+	}
+	if !strings.Contains(out, "no tasks") {
+		t.Errorf("expected plain 'no tasks', got: %q", out)
+	}
+}
+
+func TestLs_WithProjectContext_NoTasks_ShowsScopeHint(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"Work"`) || !strings.Contains(out, "clear the context") {
+		t.Errorf("expected scope hint naming the context, got: %q", out)
+	}
+}
+
+func TestLs_Global_ConflictsWithBoardAndRecursive(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+	for _, flag := range []string{"--board", "--recursive"} {
+		if _, err := runCmd(t, "ls", "--global", flag); err == nil {
+			t.Errorf("expected error combining --global with %s", flag)
+		}
+	}
+}
+
 func TestLs_PriorityFilter_ShowsOnlyMatchingPriority(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")

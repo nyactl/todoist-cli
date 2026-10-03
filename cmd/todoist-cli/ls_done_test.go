@@ -56,6 +56,32 @@ func TestLsDone_EmptyNoContext_PlainMessage(t *testing.T) {
 	}
 }
 
+func TestLsDone_Global_IgnoresContext(t *testing.T) {
+	var gotProjectID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+		gotProjectID = r.URL.Query().Get("project_id")
+		w.Write([]byte(`{"items":[],"projects":{},"sections":{}}`))
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "--done", "today", "--global")
+	if err != nil {
+		t.Fatalf("ls --done --global: %v", err)
+	}
+	if gotProjectID != "" {
+		t.Errorf("expected --global to drop the project scope, got project_id %q", gotProjectID)
+	}
+	// With no context in play, the empty message must be the plain one.
+	if strings.Contains(out, "clear the context") {
+		t.Errorf("--global must not emit the context hint, got: %q", out)
+	}
+}
+
 func TestLsDone_WithResults_ListsTasksNoHint(t *testing.T) {
 	item := `{"task_id":"tc1","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
 	env := newTestEnv(t, completedHandler(item))
