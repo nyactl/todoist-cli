@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0] - 2026-10-03
+
+### Features
+
+- Ls --global flag and context-scope hints so scoped queries aren't mistaken for account-wide
+
+
 ## [1.25.0] - 2026-09-30
 
 ### Features
