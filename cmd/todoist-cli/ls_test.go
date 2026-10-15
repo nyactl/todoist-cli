@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nyactl/todoist-cli/internal/state"
 )
@@ -23,8 +24,8 @@ func TestLs_NothingDue(t *testing.T) {
 func TestLs_ShowsDueTodayTasks(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
-	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Buy milk', 'p1', date('now'))`)
-	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Overdue task', 'p1', date('now', '-1 day'))`)
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Buy milk', 'p1', date('now', 'localtime'))`)
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Overdue task', 'p1', date('now', 'localtime', '-1 day'))`)
 
 	out, err := runCmd(t, "ls")
 	if err != nil {
@@ -41,7 +42,7 @@ func TestLs_ShowsDueTodayTasks(t *testing.T) {
 func TestLs_FutureDueNotShown(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
-	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Future task', 'p1', date('now', '+5 day'))`)
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Future task', 'p1', date('now', 'localtime', '+5 day'))`)
 
 	out, err := runCmd(t, "ls")
 	if err != nil {
@@ -430,5 +431,28 @@ func TestLs_StaleContext_AutoClears(t *testing.T) {
 	st, _ := state.Load()
 	if st.HasProject() {
 		t.Errorf("expected context to be cleared after stale project detected")
+	}
+}
+
+func TestLs_DueTodayUsesLocalDate(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	now := time.Now()
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Local today', 'p1', ?)`, now.Format("2006-01-02"))
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Local tomorrow', 'p1', ?)`, now.AddDate(0, 0, 1).Format("2006-01-02"))
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t3', 'Local yesterday', 'p1', ?)`, now.AddDate(0, 0, -1).Format("2006-01-02"))
+
+	out, err := runCmd(t, "ls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Local today") {
+		t.Errorf("expected task due local today, got: %q", out)
+	}
+	if strings.Contains(out, "Local tomorrow") {
+		t.Errorf("task due local tomorrow should not be listed, got: %q", out)
+	}
+	if !strings.Contains(out, "overdue 1d") {
+		t.Errorf("expected 'overdue 1d' for task due local yesterday, got: %q", out)
 	}
 }

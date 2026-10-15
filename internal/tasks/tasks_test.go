@@ -437,9 +437,9 @@ func TestDueToday_ReturnsPastAndTodayTasks(t *testing.T) {
 	conn := openTestDB(t)
 	seedProject(t, conn, "p1", "Work")
 
-	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Overdue', 'p1', date('now', '-1 day'))`)
-	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Today', 'p1', date('now'))`)
-	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t3', 'Tomorrow', 'p1', date('now', '+1 day'))`)
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Overdue', 'p1', date('now', 'localtime', '-1 day'))`)
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Today', 'p1', date('now', 'localtime'))`)
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t3', 'Tomorrow', 'p1', date('now', 'localtime', '+1 day'))`)
 	conn.Exec(`INSERT INTO tasks (id, content, project_id) VALUES ('t4', 'No due', 'p1')`)
 
 	ts, err := tasks.DueToday(context.Background(), conn)

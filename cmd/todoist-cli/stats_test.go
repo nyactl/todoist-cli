@@ -42,11 +42,11 @@ func TestStats_CountsOverdue(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Late', 'p1', date('now', '-2 day'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Late', 'p1', date('now', 'localtime', '-2 day'))`)
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Also late', 'p1', date('now', '-1 day'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Also late', 'p1', date('now', 'localtime', '-1 day'))`)
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t3', 'Today', 'p1', date('now'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t3', 'Today', 'p1', date('now', 'localtime'))`)
 
 	out, err := runCmd(t, "stats")
 	if err != nil {
@@ -60,9 +60,9 @@ func TestStats_CountsDueThisWeek(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Soon', 'p1', date('now', '+3 day'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Soon', 'p1', date('now', 'localtime', '+3 day'))`)
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Far future', 'p1', date('now', '+14 day'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t2', 'Far future', 'p1', date('now', 'localtime', '+14 day'))`)
 
 	out, err := runCmd(t, "stats")
 	if err != nil {

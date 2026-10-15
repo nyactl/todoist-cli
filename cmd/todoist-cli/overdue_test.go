@@ -22,7 +22,7 @@ func setStdin(t *testing.T, input string) {
 func seedOverdueTask(t *testing.T, env *testEnv, id, content, projectID string) {
 	t.Helper()
 	if _, err := env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES (?, ?, ?, date('now', '-3 days'))`,
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES (?, ?, ?, date('now', 'localtime', '-3 days'))`,
 		id, content, projectID); err != nil {
 		t.Fatalf("seedOverdueTask: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestOverdue_Header_ShowsProjectAndSection(t *testing.T) {
 	hSeedProject(t, env.conn, "p1", "Work")
 	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix login bug', 'p1', 's1', date('now', '-3 days'))`)
+		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix login bug', 'p1', 's1', date('now', 'localtime', '-3 days'))`)
 	setStdin(t, "s\n")
 
 	out, err := runCmd(t, "overdue")
@@ -370,7 +370,7 @@ func TestOverdue_Header_ProjectSectionAndLabels_Combined(t *testing.T) {
 	hSeedProject(t, env.conn, "p1", "Work")
 	hSeedSection(t, env.conn, "s1", "Backlog", "p1", 0)
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix bug', 'p1', 's1', date('now', '-3 days'))`)
+		`INSERT INTO tasks (id, content, project_id, section_id, due_date) VALUES ('t1', 'Fix bug', 'p1', 's1', date('now', 'localtime', '-3 days'))`)
 	env.conn.ExecContext(context.Background(),
 		`INSERT INTO task_labels (task_id, label_name) VALUES ('t1', 'urgent')`)
 	setStdin(t, "s\n")
@@ -407,7 +407,7 @@ func TestOverdue_ViewAction_ShowsDescription(t *testing.T) {
 	env := newTestEnv(t, emptyComments())
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix login bug', 'p1', date('now', '-3 days'), 'Check the auth middleware first')`)
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix login bug', 'p1', date('now', 'localtime', '-3 days'), 'Check the auth middleware first')`)
 	setStdin(t, "v\ns\n")
 
 	out, err := runCmd(t, "overdue")
@@ -476,7 +476,7 @@ func TestOverdue_ViewAction_CommentsAPIError_StillShowsDescription(t *testing.T)
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix bug', 'p1', date('now', '-3 days'), 'See the ticket for context')`)
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Fix bug', 'p1', date('now', 'localtime', '-3 days'), 'See the ticket for context')`)
 	setStdin(t, "v\ns\n")
 
 	out, err := runCmd(t, "overdue")
@@ -495,7 +495,7 @@ func TestOverdue_ViewAction_ShowsURL(t *testing.T) {
 	env := newTestEnv(t, emptyComments())
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date, url) VALUES ('t1', 'Fix bug', 'p1', date('now', '-3 days'), 'https://todoist.com/task/t1')`)
+		`INSERT INTO tasks (id, content, project_id, due_date, url) VALUES ('t1', 'Fix bug', 'p1', date('now', 'localtime', '-3 days'), 'https://todoist.com/task/t1')`)
 	setStdin(t, "v\ns\n")
 
 	out, err := runCmd(t, "overdue")
@@ -517,7 +517,7 @@ func TestOverdue_ViewAction_DescriptionAndComments_BothShown(t *testing.T) {
 	env := newTestEnv(t, mux)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Deploy service', 'p1', date('now', '-3 days'), 'Run the migration first')`)
+		`INSERT INTO tasks (id, content, project_id, due_date, description) VALUES ('t1', 'Deploy service', 'p1', date('now', 'localtime', '-3 days'), 'Run the migration first')`)
 	setStdin(t, "v\ns\n")
 
 	out, err := runCmd(t, "overdue")
@@ -611,7 +611,7 @@ func TestOverdue_ExcludesFutureTasks(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('future', 'Future task', 'p1', date('now', '+1 day'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('future', 'Future task', 'p1', date('now', 'localtime', '+1 day'))`)
 	setStdin(t, "")
 
 	out, err := runCmd(t, "overdue")
@@ -627,7 +627,7 @@ func TestOverdue_ExcludesTodayTasks(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
-		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('today', 'Today task', 'p1', date('now'))`)
+		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('today', 'Today task', 'p1', date('now', 'localtime'))`)
 	setStdin(t, "")
 
 	out, err := runCmd(t, "overdue")

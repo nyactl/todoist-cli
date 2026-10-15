@@ -481,7 +481,8 @@ func formatDue(date, datetime string) string {
 		if err != nil {
 			return date
 		}
-		days := int(time.Since(t).Hours() / 24)
+		n := time.Now()
+		days := int(time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC).Sub(t).Hours() / 24)
 		return fmt.Sprintf("overdue %dd", days)
 	default:
 		return date

@@ -37,7 +37,7 @@ func DueToday(ctx context.Context, db *sql.DB) ([]Task, error) {
 		selectCols+`
 		WHERE t.is_completed = 0
 		  AND t.due_date IS NOT NULL
-		  AND t.due_date <= date('now')
+		  AND t.due_date <= date('now', 'localtime')
 		  AND (t.parent_id IS NULL OR t.parent_id = '')
 		ORDER BY t.due_date ASC, t.priority DESC, p.ord, t.ord`)
 }
@@ -168,7 +168,7 @@ func Overdue(ctx context.Context, db *sql.DB) ([]Task, error) {
 		selectCols+`
 		WHERE t.is_completed = 0
 		  AND t.due_date IS NOT NULL
-		  AND t.due_date < date('now')
+		  AND t.due_date < date('now', 'localtime')
 		  AND (t.parent_id IS NULL OR t.parent_id = '')
 		ORDER BY t.due_date ASC, t.priority DESC, p.ord, t.ord`)
 }
