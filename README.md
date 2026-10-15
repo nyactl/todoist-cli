@@ -1,8 +1,30 @@
 # todoist-cli
 
+[![Release](https://img.shields.io/github/v/release/nyactl/todoist-cli)](https://github.com/nyactl/todoist-cli/releases/latest)
+[![CI](https://github.com/nyactl/todoist-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/nyactl/todoist-cli/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nyactl/todoist-cli)](https://goreportcard.com/report/github.com/nyactl/todoist-cli)
+[![License: MIT](https://img.shields.io/github/license/nyactl/todoist-cli)](LICENSE)
+
 A fast, minimal Todoist CLI with a local SQLite cache. Designed for keyboard-driven workflows.
 
+![Demo: listing today's tasks, switching project, kanban board view, label filter and stats](docs/demo.gif)
+
 > **Unofficial tool** — not affiliated with or endorsed by [Doist](https://doist.com).
+
+## Why this one?
+
+Reads come from a local SQLite cache, so listing, filtering and searching are instant and work offline; only `sync` and writes talk to the API.
+
+| | todoist-cli | [Official CLI](https://github.com/Doist/todoist-cli) | [sachaos/todoist](https://github.com/sachaos/todoist) |
+|---|---|---|---|
+| Runtime | Single Go binary | Node.js (npm) | Single Go binary |
+| Local cache for reads | SQLite | — | JSON file |
+| Kanban board view | `ls -b` | — | — |
+| Fuzzy picker | `pick` (uses fzf) | — | Shell scripts (peco/fzf) |
+| Token storage | OS keychain | OS keychain | Plaintext config file |
+| Signed releases | cosign (Sigstore) | — | — |
+
+Prefer the official CLI if you want OAuth login, a read-only mode, an accessibility mode or its extension system.
 
 ## Install
 
@@ -18,10 +40,10 @@ Download the package for your architecture from the [releases page](https://gith
 
 ```sh
 # Debian / Ubuntu
-sudo dpkg -i todoist-cli_1.3.0_linux_amd64.deb
+sudo dpkg -i todoist-cli_<version>_linux_amd64.deb
 
 # Fedora / RHEL
-sudo rpm -i todoist-cli_1.3.0_linux_amd64.rpm
+sudo rpm -i todoist-cli_<version>_linux_amd64.rpm
 ```
 
 **Via `go install`:**
@@ -47,9 +69,9 @@ All releases are signed with [cosign](https://github.com/sigstore/cosign) via ke
 ## Auth
 
 ```sh
-td auth login    # prompts for API token, stores it in system keychain
-td auth logout   # remove token
-td auth status   # verify stored token
+tdc auth login    # prompts for API token, stores it in system keychain
+tdc auth logout   # remove token
+tdc auth status   # verify stored token
 ```
 
 Get your token from **Todoist → Settings → Integrations → Developer → API token**.
@@ -142,7 +164,7 @@ export TODOIST_TOKEN=your_token_here
 
 ### Completed tasks are scoped to the active project
 
-`ls --done` and the completed counters in `stats` are limited to the active `cd` context, just like the active-task views. With a context set, `ls --done` reports only that project's completions (and says so when there are none); `stats` shows the project name in its header. To review completions across **all** projects, clear the context first with `td cd`.
+`ls --done` and the completed counters in `stats` are limited to the active `cd` context, just like the active-task views. With a context set, `ls --done` reports only that project's completions (and says so when there are none); `stats` shows the project name in its header. To review completions across **all** projects, clear the context first with `tdc cd`.
 
 ### Personal vs shared labels
 
@@ -171,21 +193,23 @@ So a label created from the CLI (shared) can be listed, completed, filtered, ren
 
 ### Composing with `pick`
 
-`td pick` fuzzy-finds a task and prints its ID — compose it with any command that accepts `<task>`:
+`tdc pick` fuzzy-finds a task and prints its ID — compose it with any command that accepts `<task>`:
 
 ```sh
-td done $(td pick)              # complete a task
-td show $(td pick)              # show details
-td cp $(td pick)                # copy URL
-td edit $(td pick) -D tomorrow  # reschedule
-td pick -l urgent               # pick from urgent tasks only
+tdc done $(tdc pick)               # complete a task
+tdc show $(tdc pick)               # show details
+tdc cp $(tdc pick)                 # copy URL
+tdc edit $(tdc pick) -D tomorrow   # reschedule
+tdc pick -l urgent                 # pick from urgent tasks only
 ```
 
 ### Alias
 
 ```sh
-alias td='todoist-cli'
+alias tdc='todoist-cli'
 ```
+
+The examples use `tdc` because the [official CLI](https://github.com/Doist/todoist-cli) installs a `td` command.
 
 ### Shell completion
 
@@ -211,7 +235,7 @@ todoist-cli completion fish > ~/.config/fish/completions/todoist-cli.fish
 
 ### Prompt integration
 
-`td context` outputs `id<TAB>name` when a project is active, nothing otherwise. Always exits 0.
+`tdc context` outputs `id<TAB>name` when a project is active, nothing otherwise. Always exits 0.
 
 **Starship** (`~/.config/starship.toml`):
 ```toml
@@ -248,7 +272,7 @@ All data is stored in `~/.local/share/todoist-cli/` (XDG-compliant, override wit
 - `todoist-cli.db` — SQLite cache (tasks, projects, labels, sections)
 - `state.json` — active project context
 
-The database is a read-through cache. Deleting the directory and running `td sync` is always safe — nothing is lost.
+The database is a read-through cache. Deleting the directory and running `tdc sync` is always safe — nothing is lost.
 
 ## Support
 
