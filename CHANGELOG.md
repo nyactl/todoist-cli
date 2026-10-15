@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.26.1] - 2026-10-15
+
+### Bug Fixes
+
+- Compute today and overdue days in local time instead of UTC
+
+### Documentation
+
+- Add demo, badges and comparison table to README; use tdc alias
+
+
 ## [1.26.0] - 2026-10-03
 
 ### Features
