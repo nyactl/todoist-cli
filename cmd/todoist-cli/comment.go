@@ -48,7 +48,7 @@ var commentCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "commented  %s  %s\n", shortID(task.ID), comment.Content)
+		fmt.Fprintf(cmd.OutOrStdout(), "commented  %s  %s\n", shortID(ctx, task.ID), comment.Content)
 		return nil
 	},
 }
@@ -197,7 +197,7 @@ func commentRmAllOnTask(cmd *cobra.Command, client *todoist.Client, args []strin
 
 	out := cmd.OutOrStdout()
 	if len(comments) == 0 {
-		fmt.Fprintf(out, "no comments on %s\n", shortID(task.ID))
+		fmt.Fprintf(out, "no comments on %s\n", shortID(ctx, task.ID))
 		return nil
 	}
 

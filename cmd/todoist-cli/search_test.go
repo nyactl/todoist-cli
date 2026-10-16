@@ -124,7 +124,7 @@ func TestSearch_ExcludesCompletedTasks(t *testing.T) {
 	}
 }
 
-func TestSearch_ExcludesSubtasks(t *testing.T) {
+func TestSearch_IncludesSubtasks(t *testing.T) {
 	env := newTestEnv(t, nil)
 	hSeedProject(t, env.conn, "p1", "Work")
 	hSeedTask(t, env.conn, "parent", "Parent task", "p1", "")
@@ -134,8 +134,26 @@ func TestSearch_ExcludesSubtasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if !strings.Contains(out, "no results") {
-		t.Errorf("expected subtasks to be excluded from search, got: %q", out)
+	if !strings.Contains(out, "Child subtask") {
+		t.Errorf("expected subtask in search results, got: %q", out)
+	}
+	if strings.Contains(out, "Parent task") {
+		t.Errorf("parent should not match a query only its subtask matches, got: %q", out)
+	}
+}
+
+func TestSearch_SubtaskWithIDs(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "parent", "Parent task", "p1", "")
+	hSeedSubtask(t, env.conn, "child", "Child subtask", "p1", "parent")
+
+	out, err := runCmd(t, "search", "-i", "subtask")
+	if err != nil {
+		t.Fatalf("search -i: %v", err)
+	}
+	if !strings.Contains(out, "child") {
+		t.Errorf("expected full subtask ID with -i, got: %q", out)
 	}
 }
 

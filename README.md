@@ -92,7 +92,7 @@ export TODOIST_TOKEN=your_token_here
 
 ## Commands
 
-`<task>` accepts a task ID, ID prefix, or exact task name — all commands resolve the same way. Tab completion completes by name.
+`<task>` accepts a task ID, ID prefix, or exact task name — all commands resolve the same way. Tab completion completes by name. Short IDs in the output are the shortest prefix that is unique in your cache, so you can paste them back as `<task>`.
 
 | Command | Description |
 |---------|-------------|
@@ -121,14 +121,14 @@ export TODOIST_TOKEN=your_token_here
 | `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
 | `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |
 | `show <task>` | Show full task details — project, priority, due, deadline, labels, subtasks, and comments |
-| `show <task> --json` | Emit the task as a machine-readable JSON object (id, content, project, section, priority, labels, due, deadline, created_at, url, comments) for `jq`/scripting |
+| `show <task> --json` | Emit the task as a machine-readable JSON object (id, content, project, section, priority, labels, due, deadline, created_at, url, subtasks, comments) for `jq`/scripting |
 | `mv <task> <section>` | Move task to a different section within the current project |
 | `mv <task> -p <project>` | Move task to a different project |
 | `mv <task> -p <project> -s <section>` | Move task to a specific section in a different project |
 | `rm <task>` | Delete a task |
 | `cp <task>` | Copy task URL to clipboard |
 | `open <task>` | Reopen a completed task |
-| `search <query>` | Search tasks by content or description across all projects |
+| `search <query>` | Search tasks and subtasks by content or description across all projects |
 | `search -i <query>` | Same, prepending the full task ID to each line (for scripting) |
 | `comment <task> <text>` | Add a comment to a task |
 | `comment ls <task>` | List a task's comments — id, timestamp, first line (tab-separated) |

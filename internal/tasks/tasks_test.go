@@ -658,3 +658,117 @@ func TestLabels_ReturnsTaskLabels(t *testing.T) {
 		t.Fatalf("expected 2 labels, got %d", len(lbls))
 	}
 }
+
+// ShortIDs
+
+func TestShortIDs(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	for _, id := range []string{
+		"abcdXXXXXX",               // unique after 4
+		"6hmR8aaaa1", "6hmR8aaab2", // share 8
+		"7qwe1aaaaa", "7qwe2aaaaa", // share 4
+		"9zzzzz1aaa", "9zzzzz2aaa", // share 6
+		"ab", // shorter than 4
+	} {
+		seedTask(t, conn, id, "task "+id, "p1", "")
+	}
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, is_completed) VALUES ('8donex1', 'Done one', 'p1', 1)`)
+	seedTask(t, conn, "8donex2", "Open one", "p1", "")
+
+	cases := map[string]string{
+		"abcdXXXXXX": "abcd",
+		"6hmR8aaaa1": "6hmR8aaaa",
+		"6hmR8aaab2": "6hmR8aaab",
+		"7qwe1aaaaa": "7qwe1",
+		"7qwe2aaaaa": "7qwe2",
+		"9zzzzz1aaa": "9zzzzz1",
+		"9zzzzz2aaa": "9zzzzz2",
+		"ab":         "ab",
+		"8donex2":    "8donex2", // completed task still counts: ByID matches it by prefix
+		"notcached1": "notc",
+		"6hmR8aaa":   "6hmR8aaa", // id that is itself a prefix of cached ids
+	}
+	ids := make([]string, 0, len(cases))
+	for id := range cases {
+		ids = append(ids, id)
+	}
+	got, err := tasks.ShortIDs(context.Background(), conn, ids...)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for id, want := range cases {
+		if got[id] != want {
+			t.Errorf("ShortIDs[%q] = %q, want %q", id, got[id], want)
+		}
+	}
+}
+
+func TestShortIDs_RoundTripThroughByID(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	ids := []string{"6hmR8gWmjpMr3pJm", "6hmR8gX2qqHf9vPc", "6hmR8gXcRw4pJ6mf", "6hmRx0000000", "6hmR8g", "6hmR8gvjvfr7WqxF", "6hmR8gVJ5PvCgfcm"}
+	for _, id := range ids {
+		seedTask(t, conn, id, "task "+id, "p1", "")
+	}
+	short, err := tasks.ShortIDs(context.Background(), conn, ids...)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, id := range ids {
+		task, err := tasks.ByID(context.Background(), conn, short[id])
+		if err != nil {
+			t.Errorf("ByID(%q) for %q: %v", short[id], id, err)
+			continue
+		}
+		if task.ID != id {
+			t.Errorf("ByID(%q) = %q, want %q", short[id], task.ID, id)
+		}
+	}
+}
+
+func TestSubtasks_IncludeDueFields(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "parent", "Parent task", "p1", "")
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id, due_date, due_string, due_is_recurring) VALUES ('c1', 'Water plants', 'p1', 'parent', '2026-10-20', 'every 3 days', 1)`)
+
+	subs, err := tasks.Subtasks(context.Background(), conn, "parent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subtask, got %d", len(subs))
+	}
+	s := subs[0]
+	if s.DueDate != "2026-10-20" || s.DueString != "every 3 days" || !s.DueRecurring {
+		t.Errorf("due fields not loaded: %+v", s)
+	}
+}
+
+func TestSearch_IncludesSubtasks(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "parent", "Parent task", "p1", "")
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id) VALUES ('c1', 'Redirect map', 'p1', 'parent')`)
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id, is_completed) VALUES ('c2', 'Redirect check', 'p1', 'parent', 1)`)
+
+	ts, err := tasks.Search(context.Background(), conn, "redirect")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ts) != 1 || ts[0].ID != "c1" {
+		t.Errorf("expected only open subtask c1, got %+v", ts)
+	}
+}
+
+func TestShortIDs_DisambiguatesUncachedIDs(t *testing.T) {
+	conn := openTestDB(t)
+	got, err := tasks.ShortIDs(context.Background(), conn, "6hmR8gX2qq", "6hmR8gXcRw", "6hmR8gX2qq")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["6hmR8gX2qq"] != "6hmR8gX2" || got["6hmR8gXcRw"] != "6hmR8gXc" {
+		t.Errorf("got %v", got)
+	}
+}

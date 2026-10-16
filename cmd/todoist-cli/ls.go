@@ -226,9 +226,19 @@ func runLsDone(cmd *cobra.Command) error {
 		return nil
 	}
 
+	ids := make([]string, len(items))
+	for i, t := range items {
+		ids[i] = t.TaskID
+	}
+	short := shortIDs(ctx, ids...)
+	width := 0
+	for _, id := range short {
+		width = max(width, len(id))
+	}
+
 	if scoped {
 		for _, t := range items {
-			printCompleted(t)
+			printCompleted(t, short, width)
 		}
 		return nil
 	}
@@ -259,7 +269,7 @@ func runLsDone(cmd *cobra.Command) error {
 		first = false
 		fmt.Printf("  %s\n", g.name)
 		for _, t := range g.items {
-			printCompleted(t)
+			printCompleted(t, short, width)
 		}
 	}
 	return nil
@@ -370,11 +380,11 @@ func parseSince(s string) (time.Time, error) {
 	}
 }
 
-func printCompleted(t todoist.CompletedTask) {
+func printCompleted(t todoist.CompletedTask, short map[string]string, width int) {
 	at := formatCompletedAt(t.CompletedAt)
 	// --ids upgrades to the full, unambiguous ID for scripting; otherwise the
 	// short prefix keeps the human view compact.
-	id := shortID(t.TaskID)
+	id := fmt.Sprintf("%-*s", width, short[t.TaskID])
 	if showIDs {
 		id = t.TaskID
 	}
@@ -458,11 +468,24 @@ func priorityMark(p int) string {
 	}
 }
 
-func shortID(id string) string {
-	if len(id) <= 4 {
-		return fmt.Sprintf("%-4s", id)
+// shortIDs maps each id to its shortest unambiguous prefix in the local
+// cache, falling back to the first 4 characters when the cache can't be read.
+func shortIDs(ctx context.Context, ids ...string) map[string]string {
+	if conn, err := db.Open(); err == nil {
+		defer conn.Close()
+		if m, err := tasks.ShortIDs(ctx, conn, ids...); err == nil {
+			return m
+		}
 	}
-	return id[:4]
+	m := make(map[string]string, len(ids))
+	for _, id := range ids {
+		m[id] = id[:min(4, len(id))]
+	}
+	return m
+}
+
+func shortID(ctx context.Context, id string) string {
+	return shortIDs(ctx, id)[id]
 }
 
 func formatDue(date, datetime string) string {

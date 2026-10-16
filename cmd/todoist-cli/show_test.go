@@ -95,6 +95,9 @@ func TestShow_JSON_NullAndArrayFields(t *testing.T) {
 	if _, ok := got["comments"].([]any); !ok {
 		t.Errorf("comments must be an array, got %T", got["comments"])
 	}
+	if _, ok := got["subtasks"].([]any); !ok {
+		t.Errorf("subtasks must be an array, got %T", got["subtasks"])
+	}
 	// JSON includes the project even when it is Inbox (unlike the human view)
 	if got["project"] != "Inbox" {
 		t.Errorf("project = %v, want Inbox", got["project"])
@@ -469,5 +472,74 @@ func TestShow_NoDueDate_Omitted(t *testing.T) {
 	}
 	if strings.Contains(out, "due") {
 		t.Errorf("expected no due date in output, got: %q", out)
+	}
+}
+
+func TestShow_SubtaskIDsAreUniquePrefixes(t *testing.T) {
+	task := todoist.Task{ID: "6hmR8gWmjpMr3pJm", Content: "Launch"}
+	env := newTestEnv(t, stubTaskHandler(task))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "6hmR8gWmjpMr3pJm", "Launch", "p1", "")
+	hSeedSubtask(t, env.conn, "6hmR8gX2qqHf9vPc", "Record demo", "p1", "6hmR8gWmjpMr3pJm")
+	hSeedSubtask(t, env.conn, "6hmR8gXcRw4pJ6mf", "Add topics", "p1", "6hmR8gWmjpMr3pJm")
+	hSeedSubtask(t, env.conn, "zz99", "Short one", "p1", "6hmR8gWmjpMr3pJm")
+
+	out, err := runCmd(t, "show", "6hmR8gWmjpMr3pJm")
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	for _, want := range []string{
+		"6hmR8gW  Launch\n",
+		"  6hmR8gX2  Record demo\n",
+		"  6hmR8gXc  Add topics\n",
+		"  zz99      Short one\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestShow_JSON_Subtasks(t *testing.T) {
+	task := todoist.Task{ID: "task-parent", Content: "Epic task", ProjectID: "p1"}
+	env := newTestEnv(t, commentStub(task, nil, nil))
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedTask(t, env.conn, "task-parent", "Epic task", "p1", "")
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id, priority, ord, due_date, due_string, due_is_recurring) VALUES ('sub-1', 'Water plants', 'p1', 'task-parent', 3, 1, '2026-10-20', 'every 3 days', 1)`)
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id, ord) VALUES ('sub-2', 'No due', 'p1', 'task-parent', 2)`)
+	env.conn.Exec(`INSERT INTO tasks (id, content, project_id, parent_id, ord, is_completed) VALUES ('sub-3', 'Finished', 'p1', 'task-parent', 3, 1)`)
+
+	out, err := runCmd(t, "show", "task-parent", "--json")
+	if err != nil {
+		t.Fatalf("show --json: %v", err)
+	}
+	var got struct {
+		Subtasks []struct {
+			ID       string `json:"id"`
+			Content  string `json:"content"`
+			Priority int    `json:"priority"`
+			Due      *struct {
+				Date      string  `json:"date"`
+				Datetime  *string `json:"datetime"`
+				Recurring bool    `json:"recurring"`
+				String    *string `json:"string"`
+			} `json:"due"`
+		} `json:"subtasks"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if len(got.Subtasks) != 2 {
+		t.Fatalf("expected 2 open subtasks, got %d:\n%s", len(got.Subtasks), out)
+	}
+	s1, s2 := got.Subtasks[0], got.Subtasks[1]
+	if s1.ID != "sub-1" || s1.Content != "Water plants" || s1.Priority != 3 {
+		t.Errorf("first subtask = %+v", s1)
+	}
+	if s1.Due == nil || s1.Due.Date != "2026-10-20" || !s1.Due.Recurring || s1.Due.String == nil || *s1.Due.String != "every 3 days" || s1.Due.Datetime != nil {
+		t.Errorf("first subtask due = %+v", s1.Due)
+	}
+	if s2.ID != "sub-2" || s2.Due != nil {
+		t.Errorf("second subtask = %+v, want sub-2 with null due", s2)
 	}
 }

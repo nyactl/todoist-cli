@@ -153,7 +153,7 @@ var editCmd = &cobra.Command{
 		if updated != nil {
 			content = updated.Content
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "updated  %s  %s\n", shortID(task.ID), content)
+		fmt.Fprintf(cmd.OutOrStdout(), "updated  %s  %s\n", shortID(ctx, task.ID), content)
 		return nil
 	},
 }

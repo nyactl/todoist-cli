@@ -37,7 +37,7 @@ var doneCmd = &cobra.Command{
 			return err
 		}
 		conn.ExecContext(ctx, `UPDATE tasks SET is_completed=1 WHERE id=?`, t.ID)
-		fmt.Printf("done  %s  %s\n", shortID(t.ID), t.Content)
+		fmt.Printf("done  %s  %s\n", shortID(ctx, t.ID), t.Content)
 		return nil
 	},
 }

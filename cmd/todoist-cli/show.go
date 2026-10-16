@@ -60,11 +60,17 @@ var showCmd = &cobra.Command{
 		}
 		projectName := projectNameByID(ctx, t.ProjectID)
 
-		if showJSON {
-			return emitTaskJSON(t, projectName, sectionNameByID(ctx, t.SectionID), comments, authorName)
+		var subs []tasks.Task
+		if conn, err := db.Open(); err == nil {
+			subs, _ = tasks.Subtasks(ctx, conn, t.ID)
+			conn.Close()
 		}
 
-		fmt.Printf("%s  %s\n", shortID(t.ID), t.Content)
+		if showJSON {
+			return emitTaskJSON(t, projectName, sectionNameByID(ctx, t.SectionID), subs, comments, authorName)
+		}
+
+		fmt.Printf("%s  %s\n", shortID(ctx, t.ID), t.Content)
 		if t.Description != "" {
 			fmt.Printf("\n%s\n", t.Description)
 		}
@@ -101,15 +107,20 @@ var showCmd = &cobra.Command{
 			}
 		}
 
-		// subtasks from local cache
-		if conn, err := db.Open(); err == nil {
-			if subs, err := tasks.Subtasks(ctx, conn, t.ID); err == nil && len(subs) > 0 {
-				fmt.Println("\nsubtasks")
-				for _, s := range subs {
-					fmt.Printf("  %s  %s\n", shortID(s.ID), s.Content)
-				}
+		if len(subs) > 0 {
+			ids := make([]string, len(subs))
+			for i, s := range subs {
+				ids[i] = s.ID
 			}
-			conn.Close()
+			short := shortIDs(ctx, ids...)
+			width := 0
+			for _, id := range short {
+				width = max(width, len(id))
+			}
+			fmt.Println("\nsubtasks")
+			for _, s := range subs {
+				fmt.Printf("  %-*s  %s\n", width, short[s.ID], s.Content)
+			}
 		}
 
 		if len(comments) > 0 {
@@ -181,12 +192,18 @@ func sectionNameByID(ctx context.Context, id string) string {
 // emitTaskJSON prints the task as a machine-readable JSON object matching the
 // documented schema (issue #19). Absent fields serialize as null; labels and
 // comments are always arrays.
-func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.Comment, authorName func(string) string) error {
+func emitTaskJSON(t *todoist.Task, project, section string, subs []tasks.Task, comments []todoist.Comment, authorName func(string) string) error {
 	type jsonDue struct {
 		Date      string  `json:"date"`
 		Datetime  *string `json:"datetime"`
 		Recurring bool    `json:"recurring"`
 		String    *string `json:"string"`
+	}
+	type jsonSubtask struct {
+		ID       string   `json:"id"`
+		Content  string   `json:"content"`
+		Priority int      `json:"priority"`
+		Due      *jsonDue `json:"due"`
 	}
 	type jsonComment struct {
 		ID       string `json:"id"`
@@ -206,6 +223,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.C
 		Deadline    *string       `json:"deadline"`
 		CreatedAt   string        `json:"created_at"`
 		URL         string        `json:"url"`
+		Subtasks    []jsonSubtask `json:"subtasks"`
 		Comments    []jsonComment `json:"comments"`
 	}{
 		ID:          t.ID,
@@ -217,6 +235,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.C
 		Labels:      []string{},
 		CreatedAt:   t.CreatedAt,
 		URL:         t.URL,
+		Subtasks:    []jsonSubtask{},
 		Comments:    []jsonComment{},
 	}
 	if len(t.Labels) > 0 {
@@ -227,6 +246,13 @@ func emitTaskJSON(t *todoist.Task, project, section string, comments []todoist.C
 	}
 	if t.Deadline != nil {
 		out.Deadline = nilIfEmpty(t.Deadline.Date)
+	}
+	for _, s := range subs {
+		js := jsonSubtask{ID: s.ID, Content: s.Content, Priority: s.Priority}
+		if s.DueDate != "" {
+			js.Due = &jsonDue{Date: s.DueDate, Datetime: nilIfEmpty(s.DueDatetime), Recurring: s.DueRecurring, String: nilIfEmpty(s.DueString)}
+		}
+		out.Subtasks = append(out.Subtasks, js)
 	}
 	for _, c := range comments {
 		out.Comments = append(out.Comments, jsonComment{

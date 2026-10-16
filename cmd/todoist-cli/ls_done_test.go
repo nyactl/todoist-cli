@@ -101,3 +101,24 @@ func TestLsDone_WithResults_ListsTasksNoHint(t *testing.T) {
 		t.Errorf("hint must not appear when there are results, got: %q", out)
 	}
 }
+
+func TestLsDone_ShortIDsAreUniqueAndAligned(t *testing.T) {
+	items := `{"task_id":"6hmR8gX2qqHf9vPc","content":"Record demo","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
+		`{"task_id":"6hmR8gXcRw4pJ6mf","content":"Add topics","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
+		`{"task_id":"zz990000","content":"Other","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
+	env := newTestEnv(t, completedHandler(items))
+	hSeedProject(t, env.conn, "p1", "Work")
+	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+
+	out, err := runCmd(t, "ls", "--done", "today")
+	if err != nil {
+		t.Fatalf("ls --done: %v", err)
+	}
+	for _, want := range []string{"✓  6hmR8gX2  Record demo", "✓  6hmR8gXc  Add topics", "✓  zz99      Other"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, out)
+		}
+	}
+}

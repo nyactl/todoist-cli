@@ -4,21 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 )
 
 type Task struct {
-	ID          string
-	Content     string
-	ProjectID   string
-	ProjectName string
-	SectionID   string
-	SectionName string
-	Priority    int
-	Order       int
-	DueDate     string
-	DueDatetime string
-	URL         string
+	ID           string
+	Content      string
+	ProjectID    string
+	ProjectName  string
+	SectionID    string
+	SectionName  string
+	Priority     int
+	Order        int
+	DueDate      string
+	DueDatetime  string
+	DueString    string
+	DueRecurring bool
+	URL          string
 }
 
 const selectCols = `
@@ -27,6 +31,7 @@ const selectCols = `
 	       COALESCE(t.section_id, ''), COALESCE(s.name, ''),
 	       t.priority, t.ord,
 	       COALESCE(t.due_date, ''), COALESCE(t.due_datetime, ''),
+	       COALESCE(t.due_string, ''), t.due_is_recurring,
 	       COALESCE(t.url, '')
 	FROM tasks t
 	LEFT JOIN projects p ON t.project_id = p.id
@@ -178,7 +183,6 @@ func Search(ctx context.Context, db *sql.DB, q string) ([]Task, error) {
 	return query(ctx, db,
 		selectCols+`
 		WHERE t.is_completed = 0
-		  AND (t.parent_id IS NULL OR t.parent_id = '')
 		  AND (lower(t.content) LIKE ? OR lower(t.description) LIKE ?)
 		ORDER BY t.priority DESC, p.ord, t.ord`,
 		pattern, pattern)
@@ -285,6 +289,7 @@ func query(ctx context.Context, q *sql.DB, sql string, args ...any) ([]Task, err
 			&t.SectionID, &t.SectionName,
 			&t.Priority, &t.Order,
 			&t.DueDate, &t.DueDatetime,
+			&t.DueString, &t.DueRecurring,
 			&t.URL,
 		); err != nil {
 			return nil, err
@@ -292,4 +297,59 @@ func query(ctx context.Context, q *sql.DB, sql string, args ...any) ([]Task, err
 		ts = append(ts, t)
 	}
 	return ts, rows.Err()
+}
+
+// ShortIDs maps each id to the shortest prefix (at least 4 characters) that
+// matches no other cached task and none of the other ids, so it can be passed
+// back wherever <task> is accepted. ByID matches prefixes against completed
+// tasks too, so they count; ids missing from the cache (e.g. completed tasks
+// fetched from the API) are disambiguated against each other. Comparison is
+// case-insensitive because ByID's LIKE match is.
+func ShortIDs(ctx context.Context, db *sql.DB, ids ...string) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id FROM tasks ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("query task ids: %w", err)
+	}
+	defer rows.Close()
+	var all []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		all = append(all, strings.ToLower(id))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		all = append(all, strings.ToLower(id))
+	}
+	sort.Strings(all)
+	all = slices.Compact(all)
+
+	out := make(map[string]string, len(ids))
+	for _, id := range ids {
+		n := 4
+		lower := strings.ToLower(id)
+		i := sort.SearchStrings(all, lower)
+		for _, j := range []int{i - 1, i, i + 1} {
+			if j < 0 || j >= len(all) || all[j] == lower {
+				continue
+			}
+			if l := commonPrefixLen(lower, all[j]) + 1; l > n {
+				n = l
+			}
+		}
+		out[id] = id[:min(n, len(id))]
+	}
+	return out, nil
+}
+
+func commonPrefixLen(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
 }

@@ -32,7 +32,7 @@ var openCmd = &cobra.Command{
 		}
 		defer conn.Close()
 		conn.ExecContext(ctx, `UPDATE tasks SET is_completed=0 WHERE id=?`, args[0])
-		fmt.Printf("reopened  %s\n", shortID(args[0]))
+		fmt.Printf("reopened  %s\n", shortID(ctx, args[0]))
 		return nil
 	},
 }
