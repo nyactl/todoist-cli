@@ -161,6 +161,15 @@ func TestLiveTaskLifecycle(t *testing.T) {
 		t.Errorf("search missing subtask:\n%s", out)
 	}
 
+	listed := decodeJSON[[]jsonTask](t, mustRun(t, "ls", "--json"))
+	if i := slices.IndexFunc(listed, func(j jsonTask) bool { return j.ID == parent }); i < 0 ||
+		listed[i].Deadline == nil || *listed[i].Deadline != deadline || !slices.Contains(listed[i].Labels, label) {
+		t.Errorf("ls --json after sync: %+v", listed)
+	}
+	if sections := decodeJSON[[]map[string]string](t, mustRun(t, "sections", "--json")); len(sections) != 2 {
+		t.Errorf("sections --json: %v", sections)
+	}
+
 	got := showTask(t, parent)
 	if got.Priority != 4 || got.Description != "why" || got.Due == nil ||
 		got.Deadline == nil || *got.Deadline != deadline ||
@@ -182,6 +191,9 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	commentID, _, _ := strings.Cut(comments, "\t")
 	if got := showTask(t, parent); len(got.Comments) != 1 || got.Comments[0].Author == "" {
 		t.Errorf("show comments: %+v", got.Comments)
+	}
+	if c := decodeJSON[[]jsonComment](t, mustRun(t, "comment", "ls", "--json", parent)); len(c) != 1 || c[0].Author == "" {
+		t.Errorf("comment ls --json: %+v", c)
 	}
 	mustRun(t, "comment", "rm", commentID)
 	if out := mustRun(t, "comment", "ls", parent); out != "" {
@@ -211,7 +223,10 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	mustRun(t, "projects", "add", sub, "--parent", project)
 	mustRun(t, "projects", "mv", sub, sub+"-moved")
 	mustRun(t, "projects", "rm", sub+"-moved")
-	mustRun(t, "stats")
+	stats := decodeJSON[map[string]any](t, mustRun(t, "stats", "--json"))
+	if stats["done_today"] == nil || stats["done_today"].(float64) < 1 {
+		t.Errorf("stats --json done_today: %v", stats)
+	}
 }
 
 // TestLiveSharedProject covers what needs a second person: comment authors

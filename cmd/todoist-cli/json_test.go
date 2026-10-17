@@ -323,3 +323,57 @@ func TestAdd_StoresDeadline(t *testing.T) {
 		t.Errorf("deadline not cached by add: %+v", got)
 	}
 }
+
+func TestJSON_LsRecursive_IncludesSubprojects(t *testing.T) {
+	env := newTestEnv(t, nil)
+	hSeedProject(t, env.conn, "p1", "Dev")
+	hSeedSubproject(t, env.conn, "p2", "CLI", "p1")
+	hSeedTask(t, env.conn, "t1", "Parent task", "p1", "")
+	hSeedTask(t, env.conn, "t2", "Child project task", "p2", "")
+	setContext(t, "p1", "Dev")
+
+	got := decodeJSON[[]jsonTask](t, mustJSON(t, "ls", "--json", "-r"))
+	projects := map[string]bool{}
+	for _, task := range got {
+		projects[*task.Project] = true
+	}
+	if len(got) != 2 || !projects["Dev"] || !projects["CLI"] {
+		t.Errorf("want tasks from both projects, got %+v", got)
+	}
+}
+
+func TestJSON_LsPriorityFilter(t *testing.T) {
+	env := newTestEnv(t, nil)
+	seedRichTask(t, env)
+	hSeedTask(t, env.conn, "low", "Low priority", "p1", "")
+	setContext(t, "p1", "Work")
+
+	got := decodeJSON[[]jsonTask](t, mustJSON(t, "ls", "--json", "-P", "4"))
+	if len(got) != 1 || got[0].ID != "6Jf8VQXxpwv56VQ7" {
+		t.Errorf("want only the priority-4 task, got %+v", got)
+	}
+}
+
+func TestJSON_LsLabelEmptyInContext_PrintsEmptyArray(t *testing.T) {
+	env := newTestEnv(t, nil)
+	seedRichTask(t, env)
+	hSeedProject(t, env.conn, "p9", "Home")
+	setContext(t, "p9", "Home")
+
+	if out := strings.TrimSpace(mustJSON(t, "ls", "--json", "-l", "focus")); out != "[]" {
+		t.Errorf("want [], got %q", out)
+	}
+}
+
+func TestEdit_ClearingDeadlineClearsCache(t *testing.T) {
+	stub := makeEditStub(t, "6Jf8VQXxpwv56VQ7", func(map[string]any) {},
+		todoist.Task{ID: "6Jf8VQXxpwv56VQ7", Content: "Write report", ProjectID: "p1", Priority: 4})
+	env := newTestEnv(t, stub)
+	seedRichTask(t, env)
+
+	mustJSON(t, "edit", "6Jf8VQXxpwv56VQ7", "--deadline", "")
+	got := decodeJSON[[]jsonTask](t, mustJSON(t, "search", "--json", "Write report"))
+	if len(got) != 1 || got[0].Deadline != nil {
+		t.Errorf("deadline still cached after clearing: %+v", got)
+	}
+}
