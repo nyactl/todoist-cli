@@ -50,6 +50,12 @@ var contextCmd = &cobra.Command{
 	Short: "Print active project as id and name (tab-separated), empty if none",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := state.Load()
+		if jsonOut {
+			if err != nil || !st.HasProject() {
+				return emitJSON(nil)
+			}
+			return emitJSON(map[string]string{"id": st.ProjectID, "name": st.ProjectName})
+		}
 		if err != nil || !st.HasProject() {
 			return nil // empty stdout — not an error
 		}
@@ -60,5 +66,6 @@ var contextCmd = &cobra.Command{
 
 func init() {
 	root.AddCommand(cdCmd)
+	contextCmd.Flags().BoolVar(&jsonOut, "json", false, `print {"id", "name"}, or null when no context is set`)
 	root.AddCommand(contextCmd)
 }

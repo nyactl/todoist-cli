@@ -120,6 +120,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 				return err
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
+			if jsonOut {
+				return emitListJSON(ctx, conn, ts, scoped, st.ProjectName)
+			}
 			if len(ts) == 0 {
 				if scoped {
 					fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
@@ -143,6 +146,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 				return err
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
+			if jsonOut {
+				return emitListJSON(ctx, conn, ts, true, st.ProjectName)
+			}
 			if len(ts) == 0 {
 				fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
 				return nil
@@ -163,6 +169,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 				return err
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
+			if jsonOut {
+				return emitListJSON(ctx, conn, ts, false, "")
+			}
 			if len(ts) == 0 {
 				fmt.Println("nothing due")
 				return nil
@@ -171,6 +180,15 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		}
 		return nil
 	},
+}
+
+// emitListJSON prints ts as a JSON array. The context hint the text view
+// prints for an empty scoped result goes to stderr so stdout stays valid JSON.
+func emitListJSON(ctx context.Context, conn *sql.DB, ts []tasks.Task, scoped bool, projectName string) error {
+	if len(ts) == 0 && scoped {
+		fmt.Fprintf(os.Stderr, "no tasks %s\n", contextScopeNote(projectName))
+	}
+	return emitTasksJSON(ctx, conn, ts)
 }
 
 func runLsDone(cmd *cobra.Command) error {
@@ -213,6 +231,29 @@ func runLsDone(cmd *cobra.Command) error {
 		if err != nil {
 			return err
 		}
+	}
+	if jsonOut {
+		if len(items) == 0 && scoped {
+			fmt.Fprintf(os.Stderr, "nothing completed %s\n", contextScopeNote(st.ProjectName))
+		}
+		type jsonCompleted struct {
+			ID          string  `json:"id"`
+			Content     string  `json:"content"`
+			Project     *string `json:"project"`
+			Section     *string `json:"section"`
+			CompletedAt string  `json:"completed_at"`
+		}
+		out := make([]jsonCompleted, 0, len(items))
+		for _, t := range items {
+			out = append(out, jsonCompleted{
+				ID:          t.TaskID,
+				Content:     t.Content,
+				Project:     nilIfEmpty(res.ProjectName[t.ProjectID]),
+				Section:     nilIfEmpty(res.SectionName[t.SectionID]),
+				CompletedAt: t.CompletedAt,
+			})
+		}
+		return emitJSON(out)
 	}
 	if len(items) == 0 {
 		// Completed queries are scoped to the active project context. Without a
@@ -685,6 +726,7 @@ func init() {
 	lsCmd.Flags().IntVarP(&lsPriority, "priority", "P", 0, "filter by priority 1–4 (1=normal, 4=urgent)")
 	lsCmd.Flags().BoolVarP(&lsRecursive, "recursive", "r", false, "include tasks from sub-projects of the active project, grouped by project")
 	lsCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
+	lsCmd.Flags().BoolVar(&jsonOut, "json", false, "print tasks as a JSON array (ignores --board and --ids)")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "ignore the active project context; search all projects")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)

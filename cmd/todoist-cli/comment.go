@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"strings"
 
@@ -83,6 +84,15 @@ var commentLsCmd = &cobra.Command{
 			return err
 		}
 
+		if jsonOut {
+			author := commentAuthors(ctx, client, task.ProjectID)
+			items := make([]jsonComment, 0, len(comments))
+			for _, c := range comments {
+				items = append(items, jsonComment{ID: c.ID, TaskID: c.TaskID, PostedAt: c.PostedAt, Author: author(c.PostedUID), Content: c.Content})
+			}
+			return emitJSON(items)
+		}
+
 		out := cmd.OutOrStdout()
 		for _, c := range comments {
 			// Full comment ID (not shortID) so it can be passed straight to
@@ -108,10 +118,20 @@ var commentShowCmd = &cobra.Command{
 		client := todoist.New(token)
 
 		out := cmd.OutOrStdout()
+		var items []jsonComment
+		authors := map[string]func(string) string{}
 		for i, id := range args {
 			c, err := client.GetComment(ctx, id)
 			if err != nil {
 				return fmt.Errorf("get comment %q (pass a full comment ID from `todoist-cli comment ls <task>`): %w", id, err)
+			}
+			if jsonOut {
+				project := cachedProjectOf(ctx, c.TaskID)
+				if authors[project] == nil {
+					authors[project] = commentAuthors(ctx, client, project)
+				}
+				items = append(items, jsonComment{ID: c.ID, TaskID: c.TaskID, PostedAt: c.PostedAt, Author: authors[project](c.PostedUID), Content: c.Content})
+				continue
 			}
 			if i > 0 {
 				fmt.Fprintln(out)
@@ -119,8 +139,24 @@ var commentShowCmd = &cobra.Command{
 			fmt.Fprintf(out, "%s  %s\n", c.ID, formatCommentTime(c.PostedAt))
 			fmt.Fprintf(out, "%s\n", c.Content)
 		}
+		if jsonOut {
+			return emitJSON(items)
+		}
 		return nil
 	},
+}
+
+// cachedProjectOf returns the project of a cached task, or "" when the task
+// is not in the cache.
+func cachedProjectOf(ctx context.Context, taskID string) string {
+	conn, err := db.Open()
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	var projectID string
+	conn.QueryRowContext(ctx, `SELECT COALESCE(project_id, '') FROM tasks WHERE id = ?`, taskID).Scan(&projectID)
+	return projectID
 }
 
 var (
@@ -241,6 +277,8 @@ func firstLine(s string) string {
 func init() {
 	commentRmCmd.Flags().BoolVar(&commentRmAll, "all", false, "delete every comment on the given task (prompts unless -f)")
 	commentRmCmd.Flags().BoolVarP(&commentRmForce, "force", "f", false, "skip the confirmation prompt for --all")
+	commentLsCmd.Flags().BoolVar(&jsonOut, "json", false, "print comments as a JSON array with full content and author")
+	commentShowCmd.Flags().BoolVar(&jsonOut, "json", false, "print comments as a JSON array")
 	commentCmd.AddCommand(commentLsCmd)
 	commentCmd.AddCommand(commentShowCmd)
 	commentCmd.AddCommand(commentRmCmd)

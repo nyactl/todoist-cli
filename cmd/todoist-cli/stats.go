@@ -71,43 +71,63 @@ var statsCmd = &cobra.Command{
 		}
 
 		w := cmd.OutOrStdout()
-		if st.HasProject() {
-			fmt.Fprintf(w, "  project  %s\n\n", st.ProjectName)
+		if !jsonOut {
+			if st.HasProject() {
+				fmt.Fprintf(w, "  project  %s\n\n", st.ProjectName)
+			}
+			fmt.Fprintf(w, "  %-14s %d\n", "overdue", overdue)
+			fmt.Fprintf(w, "  %-14s %d\n", "due today", dueToday)
+			fmt.Fprintf(w, "  %-14s %d\n", "due this week", dueWeek)
+			fmt.Fprintf(w, "  %-14s %d\n", "open total", openTotal)
 		}
-		fmt.Fprintf(w, "  %-14s %d\n", "overdue", overdue)
-		fmt.Fprintf(w, "  %-14s %d\n", "due today", dueToday)
-		fmt.Fprintf(w, "  %-14s %d\n", "due this week", dueWeek)
-		fmt.Fprintf(w, "  %-14s %d\n", "open total", openTotal)
-
+		// Done counts stay null in JSON when the completed-tasks call is skipped
+		// or fails, so a script can tell "unknown" from zero.
+		stats := struct {
+			Project      *string `json:"project"`
+			Overdue      int     `json:"overdue"`
+			DueToday     int     `json:"due_today"`
+			DueWeek      int     `json:"due_week"`
+			OpenTotal    int     `json:"open_total"`
+			DoneToday    *int    `json:"done_today"`
+			DoneThisWeek *int    `json:"done_week"`
+		}{
+			Project: nilIfEmpty(st.ProjectName), Overdue: overdue, DueToday: dueToday,
+			DueWeek: dueWeek, OpenTotal: openTotal,
+		}
 		// completed counts — live API call, silently skipped if no token
-		token, err := config.GetToken()
-		if err != nil {
-			return nil
-		}
-		client := todoist.New(token)
+		if token, err := config.GetToken(); err == nil {
+			client := todoist.New(token)
 
-		startOfDay := func(t time.Time) time.Time {
-			return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		}
-		sinceDay := startOfDay(time.Now())
-		sinceWeek := startOfDay(time.Now().AddDate(0, 0, -7))
+			startOfDay := func(t time.Time) time.Time {
+				return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+			}
+			sinceDay := startOfDay(time.Now())
+			sinceWeek := startOfDay(time.Now().AddDate(0, 0, -7))
 
-		doneToday, doneWeekCount := 0, 0
-		if res, err := client.GetCompletedSince(ctx, sinceWeek, projectFilter); err == nil {
-			for _, t := range res.Tasks {
-				doneWeekCount++
-				if t.CompletedAt >= sinceDay.Format(time.RFC3339)[:10] {
-					doneToday++
+			doneToday, doneWeekCount := 0, 0
+			if res, err := client.GetCompletedSince(ctx, sinceWeek, projectFilter); err == nil {
+				for _, t := range res.Tasks {
+					doneWeekCount++
+					if t.CompletedAt >= sinceDay.Format(time.RFC3339)[:10] {
+						doneToday++
+					}
+				}
+				stats.DoneToday, stats.DoneThisWeek = &doneToday, &doneWeekCount
+				if !jsonOut {
+					fmt.Fprintf(w, "\n  %-14s %d\n", "done today", doneToday)
+					fmt.Fprintf(w, "  %-14s %d\n", "done this week", doneWeekCount)
 				}
 			}
-			fmt.Fprintf(w, "\n  %-14s %d\n", "done today", doneToday)
-			fmt.Fprintf(w, "  %-14s %d\n", "done this week", doneWeekCount)
 		}
 
+		if jsonOut {
+			return emitJSON(stats)
+		}
 		return nil
 	},
 }
 
 func init() {
+	statsCmd.Flags().BoolVar(&jsonOut, "json", false, "print counts as a JSON object")
 	root.AddCommand(statsCmd)
 }

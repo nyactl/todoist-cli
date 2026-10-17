@@ -254,19 +254,37 @@ func projectSubtreeContains(ctx context.Context, conn *sql.DB, rootID, candidate
 
 func printProjects(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, name FROM projects WHERE is_archived=0 ORDER BY ord`)
+		`SELECT id, name, COALESCE(parent_id, ''), is_favorite FROM projects WHERE is_archived=0 ORDER BY ord`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+	type jsonProject struct {
+		ID         string  `json:"id"`
+		Name       string  `json:"name"`
+		ParentID   *string `json:"parent_id"`
+		IsFavorite bool    `json:"is_favorite"`
+	}
+	out := []jsonProject{}
 	for rows.Next() {
-		var id, name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var id, name, parentID string
+		var favorite bool
+		if err := rows.Scan(&id, &name, &parentID, &favorite); err != nil {
 			return err
+		}
+		if jsonOut {
+			out = append(out, jsonProject{ID: id, Name: name, ParentID: nilIfEmpty(parentID), IsFavorite: favorite})
+			continue
 		}
 		fmt.Printf("%s\t%s\n", id, name)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if jsonOut {
+		return emitJSON(out)
+	}
+	return nil
 }
 
 func init() {
@@ -278,5 +296,6 @@ func init() {
 	projectsCmd.AddCommand(projectsAddCmd)
 	projectsCmd.AddCommand(projectsRmCmd)
 	projectsCmd.AddCommand(projectsMvCmd)
+	projectsCmd.Flags().BoolVar(&jsonOut, "json", false, "print projects as a JSON array")
 	root.AddCommand(projectsCmd)
 }

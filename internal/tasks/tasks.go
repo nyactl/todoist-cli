@@ -23,6 +23,9 @@ type Task struct {
 	DueString    string
 	DueRecurring bool
 	URL          string
+	Description  string
+	ParentID     string
+	DeadlineDate string
 }
 
 const selectCols = `
@@ -32,7 +35,8 @@ const selectCols = `
 	       t.priority, t.ord,
 	       COALESCE(t.due_date, ''), COALESCE(t.due_datetime, ''),
 	       COALESCE(t.due_string, ''), t.due_is_recurring,
-	       COALESCE(t.url, '')
+	       COALESCE(t.url, ''), t.description,
+	       COALESCE(t.parent_id, ''), COALESCE(t.deadline_date, '')
 	FROM tasks t
 	LEFT JOIN projects p ON t.project_id = p.id
 	LEFT JOIN sections s ON t.section_id = s.id`
@@ -290,7 +294,8 @@ func query(ctx context.Context, q *sql.DB, sql string, args ...any) ([]Task, err
 			&t.Priority, &t.Order,
 			&t.DueDate, &t.DueDatetime,
 			&t.DueString, &t.DueRecurring,
-			&t.URL,
+			&t.URL, &t.Description,
+			&t.ParentID, &t.DeadlineDate,
 		); err != nil {
 			return nil, err
 		}

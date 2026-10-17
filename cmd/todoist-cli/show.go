@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -44,20 +43,11 @@ var showCmd = &cobra.Command{
 
 		// Comments + resolved author names — shared by both output modes.
 		comments, _ := client.GetComments(ctx, t.ID)
-		authors := map[string]string{}
+		authorProject := ""
 		if len(comments) > 0 {
-			if collabs, err := client.GetCollaborators(ctx, t.ProjectID); err == nil {
-				for _, c := range collabs {
-					authors[c.ID] = c.Name
-				}
-			}
+			authorProject = t.ProjectID
 		}
-		authorName := func(uid string) string {
-			if n := authors[uid]; n != "" {
-				return n
-			}
-			return uid
-		}
+		authorName := commentAuthors(ctx, client, authorProject)
 		projectName := projectNameByID(ctx, t.ProjectID)
 
 		var subs []tasks.Task
@@ -193,19 +183,13 @@ func sectionNameByID(ctx context.Context, id string) string {
 // documented schema (issue #19). Absent fields serialize as null; labels and
 // comments are always arrays.
 func emitTaskJSON(t *todoist.Task, project, section string, subs []tasks.Task, comments []todoist.Comment, authorName func(string) string) error {
-	type jsonDue struct {
-		Date      string  `json:"date"`
-		Datetime  *string `json:"datetime"`
-		Recurring bool    `json:"recurring"`
-		String    *string `json:"string"`
-	}
 	type jsonSubtask struct {
 		ID       string   `json:"id"`
 		Content  string   `json:"content"`
 		Priority int      `json:"priority"`
 		Due      *jsonDue `json:"due"`
 	}
-	type jsonComment struct {
+	type showComment struct {
 		ID       string `json:"id"`
 		PostedAt string `json:"posted_at"`
 		Author   string `json:"author"`
@@ -224,7 +208,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, subs []tasks.Task, c
 		CreatedAt   string        `json:"created_at"`
 		URL         string        `json:"url"`
 		Subtasks    []jsonSubtask `json:"subtasks"`
-		Comments    []jsonComment `json:"comments"`
+		Comments    []showComment `json:"comments"`
 	}{
 		ID:          t.ID,
 		Content:     t.Content,
@@ -236,7 +220,7 @@ func emitTaskJSON(t *todoist.Task, project, section string, subs []tasks.Task, c
 		CreatedAt:   t.CreatedAt,
 		URL:         t.URL,
 		Subtasks:    []jsonSubtask{},
-		Comments:    []jsonComment{},
+		Comments:    []showComment{},
 	}
 	if len(t.Labels) > 0 {
 		out.Labels = t.Labels
@@ -248,24 +232,15 @@ func emitTaskJSON(t *todoist.Task, project, section string, subs []tasks.Task, c
 		out.Deadline = nilIfEmpty(t.Deadline.Date)
 	}
 	for _, s := range subs {
-		js := jsonSubtask{ID: s.ID, Content: s.Content, Priority: s.Priority}
-		if s.DueDate != "" {
-			js.Due = &jsonDue{Date: s.DueDate, Datetime: nilIfEmpty(s.DueDatetime), Recurring: s.DueRecurring, String: nilIfEmpty(s.DueString)}
-		}
-		out.Subtasks = append(out.Subtasks, js)
+		out.Subtasks = append(out.Subtasks, jsonSubtask{ID: s.ID, Content: s.Content, Priority: s.Priority, Due: cachedDue(s)})
 	}
 	for _, c := range comments {
-		out.Comments = append(out.Comments, jsonComment{
+		out.Comments = append(out.Comments, showComment{
 			ID: c.ID, PostedAt: c.PostedAt, Author: authorName(c.PostedUID), Content: c.Content,
 		})
 	}
 
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(b))
-	return nil
+	return emitJSON(out)
 }
 
 func nilIfEmpty(s string) *string {

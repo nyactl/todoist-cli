@@ -157,6 +157,22 @@ export TODOIST_TOKEN=your_token_here
 | `labels rm --unused` | Delete every label attached to no cached task |
 | `labels rename <old> <new>` | Rename a label across every task carrying it (alias: `labels mv`) |
 | `stats` | Overdue, due today, due this week, open total (+ completed if token available) |
+| `--json` | Machine-readable output on every read command — see [JSON output](#json-output) |
+
+### JSON output
+
+Every read command takes `--json`: `ls` (all filters, plus `--done`), `search`, `show`, `projects`, `sections`, `labels`, `comment ls`, `comment show`, `stats` and `context`. Task objects use the same fields everywhere (`id`, `content`, `description`, `project`, `section`, `parent_id`, `priority`, `labels`, `due`, `deadline`, `url`), so one parser handles every command.
+
+- Empty results print `[]` (or `null` for `context`), never a message.
+- Hints and errors go to stderr; stdout is always valid JSON.
+- IDs are always full IDs. `--board` and `--ids` are ignored.
+- Absent values are `null`; `labels` is always an array. In `stats`, `done_today`/`done_week` are `null` when the completed-tasks call is unavailable.
+
+```sh
+tdc ls --json | jq -r '.[] | select(.priority == 4) | .content'   # urgent tasks
+tdc search --json invoice | jq -r '.[0].id' | xargs tdc done      # complete the first match
+tdc stats --json | jq .overdue                                     # for a prompt or status bar
+```
 
 ### Periods for `--done`
 

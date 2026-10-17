@@ -39,14 +39,30 @@ var sectionsCmd = &cobra.Command{
 			return err
 		}
 		defer rows.Close()
+		type jsonSection struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			ProjectID string `json:"project_id"`
+		}
+		out := []jsonSection{}
 		for rows.Next() {
 			var id, name string
 			if err := rows.Scan(&id, &name); err != nil {
 				return err
 			}
+			if jsonOut {
+				out = append(out, jsonSection{ID: id, Name: name, ProjectID: st.ProjectID})
+				continue
+			}
 			fmt.Printf("%s\t%s\n", id, name)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if jsonOut {
+			return emitJSON(out)
+		}
+		return nil
 	},
 }
 
@@ -95,6 +111,7 @@ var sectionsRmCmd = &cobra.Command{
 }
 
 func init() {
+	sectionsCmd.Flags().BoolVar(&jsonOut, "json", false, "print sections as a JSON array")
 	sectionsCmd.AddCommand(sectionsRmCmd)
 	root.AddCommand(sectionsCmd)
 }

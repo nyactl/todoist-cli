@@ -240,15 +240,31 @@ func printLabels(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	defer rows.Close()
+	type jsonLabel struct {
+		ID   *string `json:"id"`
+		Name string  `json:"name"`
+		Kind string  `json:"kind"`
+	}
+	out := []jsonLabel{}
 	for rows.Next() {
 		var id, name, kind string
 		if err := rows.Scan(&id, &name, &kind); err != nil {
 			return err
 		}
+		if jsonOut {
+			out = append(out, jsonLabel{ID: nilIfEmpty(id), Name: name, Kind: kind})
+			continue
+		}
 		// id\tname\tkind — id is empty for shared labels (they have no ID).
 		fmt.Printf("%s\t%s\t%s\n", id, name, kind)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if jsonOut {
+		return emitJSON(out)
+	}
+	return nil
 }
 
 // allLabelsQuery lists every label the user has — personal labels (from the
@@ -268,6 +284,7 @@ const allLabelsQuery = `
 func init() {
 	labelsRmCmd.Flags().BoolVarP(&labelsRmForce, "force", "f", false, "skip the confirmation prompt for labels in use")
 	labelsRmCmd.Flags().BoolVar(&labelsRmUnused, "unused", false, "delete every label attached to no cached task")
+	labelsCmd.Flags().BoolVar(&jsonOut, "json", false, "print labels as a JSON array (id is null for shared labels)")
 	labelsCmd.AddCommand(labelsRmCmd)
 	labelsCmd.AddCommand(labelsRenameCmd)
 	root.AddCommand(labelsCmd)

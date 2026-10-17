@@ -29,6 +29,9 @@ var searchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if jsonOut {
+			return emitTasksJSON(ctx, conn, ts)
+		}
 		if len(ts) == 0 {
 			fmt.Println("no results")
 			return nil
@@ -39,6 +42,7 @@ var searchCmd = &cobra.Command{
 }
 
 func init() {
+	searchCmd.Flags().BoolVar(&jsonOut, "json", false, "print matches as a JSON array (ignores --ids)")
 	searchCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
 	root.AddCommand(searchCmd)
 }

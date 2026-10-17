@@ -379,13 +379,17 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			}
 			dueRecurring = boolToInt(t.Due.IsRecurring)
 		}
+		var deadline *string
+		if t.Deadline != nil && t.Deadline.Date != "" {
+			deadline = &t.Deadline.Date
+		}
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO tasks(
 			   id,content,description,project_id,section_id,parent_id,
 			   priority,ord,is_completed,
 			   due_date,due_datetime,due_string,due_is_recurring,due_timezone,
-			   url,comment_count,created_at)
-			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?)
+			   deadline_date,url,comment_count,created_at)
+			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   content=excluded.content, description=excluded.description,
 			   project_id=excluded.project_id, section_id=excluded.section_id,
@@ -393,13 +397,13 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			   ord=excluded.ord, is_completed=excluded.is_completed,
 			   due_date=excluded.due_date, due_datetime=excluded.due_datetime,
 			   due_string=excluded.due_string, due_is_recurring=excluded.due_is_recurring,
-			   due_timezone=excluded.due_timezone,
+			   due_timezone=excluded.due_timezone, deadline_date=excluded.deadline_date,
 			   url=excluded.url, comment_count=excluded.comment_count`,
 			t.ID, t.Content, t.Description,
 			t.ProjectID, "", t.SectionID, "", t.ParentID, "",
 			t.Priority, t.Order, boolToInt(t.IsCompleted),
 			dueDate, dueDatetime, dueString, dueRecurring, dueTZ,
-			t.URL, t.CommentCount, t.CreatedAt)
+			deadline, t.URL, t.CommentCount, t.CreatedAt)
 		if err != nil {
 			return 0, fmt.Errorf("task %s: %w", t.ID, err)
 		}
@@ -441,13 +445,17 @@ func upsertTasks(ctx context.Context, db *sql.DB, items []todoist.Task) {
 			}
 			dueRecurring = boolToInt(t.Due.IsRecurring)
 		}
+		var deadline *string
+		if t.Deadline != nil && t.Deadline.Date != "" {
+			deadline = &t.Deadline.Date
+		}
 		db.ExecContext(ctx,
 			`INSERT INTO tasks(
 			   id,content,description,project_id,section_id,parent_id,
 			   priority,ord,is_completed,
 			   due_date,due_datetime,due_string,due_is_recurring,due_timezone,
-			   url,comment_count,created_at)
-			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?)
+			   deadline_date,url,comment_count,created_at)
+			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   content=excluded.content, description=excluded.description,
 			   project_id=excluded.project_id, section_id=excluded.section_id,
@@ -455,13 +463,13 @@ func upsertTasks(ctx context.Context, db *sql.DB, items []todoist.Task) {
 			   ord=excluded.ord, is_completed=excluded.is_completed,
 			   due_date=excluded.due_date, due_datetime=excluded.due_datetime,
 			   due_string=excluded.due_string, due_is_recurring=excluded.due_is_recurring,
-			   due_timezone=excluded.due_timezone,
+			   due_timezone=excluded.due_timezone, deadline_date=excluded.deadline_date,
 			   url=excluded.url, comment_count=excluded.comment_count`,
 			t.ID, t.Content, t.Description,
 			t.ProjectID, "", t.SectionID, "", t.ParentID, "",
 			t.Priority, t.Order, boolToInt(t.IsCompleted),
 			dueDate, dueDatetime, dueString, dueRecurring, dueTZ,
-			t.URL, t.CommentCount, t.CreatedAt)
+			deadline, t.URL, t.CommentCount, t.CreatedAt)
 		db.ExecContext(ctx, `DELETE FROM task_labels WHERE task_id=?`, t.ID)
 		for _, label := range t.Labels {
 			db.ExecContext(ctx,
