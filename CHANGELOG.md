@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0] - 2026-10-17
+
+### Features
+
+- Add --json to every read command (closes #32)
+
+
 ## [1.26.2] - 2026-10-17
 
 ### Bug Fixes
