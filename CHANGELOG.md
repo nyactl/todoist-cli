@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.2] - 2026-10-17
+
+### Bug Fixes
+
+- Include subtasks in search and show --json, print unambiguous short IDs (closes #29, closes #30, closes #31)
+
+
 ## [1.26.1] - 2026-10-15
 
 ### Bug Fixes
