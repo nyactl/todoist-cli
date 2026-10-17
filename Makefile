@@ -6,7 +6,7 @@ COV_MIN  := 70
 # internal/config and internal/todoist wrap keychain/HTTP — excluded.
 COV_PKGS := ./internal/db/... ./internal/state/... ./internal/tasks/...
 
-.PHONY: build install test vet cover cover-html
+.PHONY: build install test test-live vet cover cover-html
 
 build:
 	go build -o todoist-cli ./cmd/todoist-cli
@@ -16,6 +16,10 @@ install:
 
 test:
 	go test ./...
+
+# Needs TODOIST_TOKEN_A and TODOIST_TOKEN_B for two throwaway accounts.
+test-live:
+	go test -tags live -count=1 -v -run Live ./cmd/todoist-cli
 
 vet:
 	go vet ./...

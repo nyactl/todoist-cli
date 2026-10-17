@@ -274,6 +274,20 @@ All data is stored in `~/.local/share/todoist-cli/` (XDG-compliant, override wit
 
 The database is a read-through cache. Deleting the directory and running `tdc sync` is always safe — nothing is lost.
 
+## Testing against the live API
+
+`make test` runs offline against a stubbed API. `make test-live` runs the CLI end to end against the real Todoist API and needs two throwaway free accounts — never your real one, the tests create and delete data:
+
+1. Create accounts A and B.
+2. In A, create a project named `tdc-live-shared` and share it with B; accept the invite in B.
+3. Export both API tokens (Settings → Integrations → Developer) and run:
+
+```sh
+TODOIST_TOKEN_A=… TODOIST_TOKEN_B=… make test-live
+```
+
+Each run works in its own `tdc-live-*` project and deletes it afterwards; leftovers from an aborted run are removed on the next one.
+
 ## Support
 
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/nyactl?style=flat&logo=github&label=Sponsor)](https://github.com/sponsors/nyactl)
