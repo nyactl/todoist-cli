@@ -21,6 +21,7 @@ Reads come from a local SQLite cache, so listing, filtering and searching are in
 | Local cache for reads | SQLite | — | JSON file |
 | Kanban board view | `ls -b` | — | — |
 | Fuzzy picker | `pick` (uses fzf) | — | Shell scripts (peco/fzf) |
+| Machine-readable output | `--json` on every read command | `--json`, `--ndjson` | `--csv` |
 | Token storage | OS keychain | OS keychain | Plaintext config file |
 | Signed releases | cosign (Sigstore) | — | — |
 
