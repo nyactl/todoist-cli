@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.27.1] - 2026-10-18
+
+### Bug Fixes
+
+- Show a readable message for premium-only API errors
+
+### Documentation
+
+- Add machine-readable output row to comparison table
+
+
 ## [1.27.0] - 2026-10-17
 
 ### Features
