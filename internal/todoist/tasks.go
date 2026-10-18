@@ -24,11 +24,6 @@ func (c *Client) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, 
 	return &t, c.doJSON(ctx, "POST", "/tasks", req, &t)
 }
 
-func (c *Client) UpdateTask(ctx context.Context, id string, req UpdateTaskRequest) (*Task, error) {
-	var t Task
-	return &t, c.doJSON(ctx, "POST", "/tasks/"+id, req, &t)
-}
-
 func (c *Client) CloseTask(ctx context.Context, id string) error {
 	resp, err := c.do(ctx, "POST", fmt.Sprintf("/tasks/%s/close", id), nil)
 	if err != nil {

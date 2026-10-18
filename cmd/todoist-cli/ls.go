@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +15,9 @@ import (
 	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -386,6 +390,10 @@ func completedLabelSet(ctx context.Context, db *sql.DB, ids []any, idPH []string
 	return set, rows.Err()
 }
 
+var relativePeriod = regexp.MustCompile(`^([0-9]+)([a-z])$`)
+
+// parseSince turns a --done period into the start of the window. Every period
+// starts at local midnight, so 7d and 1w cover the same days as week.
 func parseSince(s string) (time.Time, error) {
 	now := time.Now()
 	startOfDay := func(t time.Time) time.Time {
@@ -401,23 +409,23 @@ func parseSince(s string) (time.Time, error) {
 	case "year":
 		return startOfDay(now.AddDate(-1, 0, 0)), nil
 	}
-	if len(s) < 2 {
+	m := relativePeriod.FindStringSubmatch(s)
+	n := 0
+	if m != nil {
+		n, _ = strconv.Atoi(m[1])
+	}
+	if n <= 0 {
 		return time.Time{}, fmt.Errorf("unknown period %q — use: today, week, month, year, Nd, Nw, Nm", s)
 	}
-	unit := s[len(s)-1]
-	var n int
-	if _, err := fmt.Sscanf(s[:len(s)-1], "%d", &n); err != nil || n <= 0 {
-		return time.Time{}, fmt.Errorf("unknown period %q — use: today, week, month, year, Nd, Nw, Nm", s)
-	}
-	switch unit {
-	case 'd':
-		return now.AddDate(0, 0, -n), nil
-	case 'w':
-		return now.AddDate(0, 0, -n*7), nil
-	case 'm':
-		return now.AddDate(0, -n, 0), nil
+	switch m[2] {
+	case "d":
+		return startOfDay(now.AddDate(0, 0, -n)), nil
+	case "w":
+		return startOfDay(now.AddDate(0, 0, -n*7)), nil
+	case "m":
+		return startOfDay(now.AddDate(0, -n, 0)), nil
 	default:
-		return time.Time{}, fmt.Errorf("unknown unit %q — use d (days), w (weeks), m (months)", string(unit))
+		return time.Time{}, fmt.Errorf("unknown unit %q — use d (days), w (weeks), m (months)", m[2])
 	}
 }
 
@@ -429,8 +437,8 @@ func printCompleted(t todoist.CompletedTask, short map[string]string, width int)
 	if showIDs {
 		id = t.TaskID
 	}
-	content := truncate(t.Content, 40)
-	fmt.Printf("  ✓  %s  %-40s  %s\n", id, content, at)
+	content := padRight(truncate(t.Content, 40), 40)
+	fmt.Printf("  ✓  %s  %s  %s\n", id, content, at)
 }
 
 func printByProject(ts []tasks.Task) {
@@ -486,14 +494,14 @@ func printBySection(ts []tasks.Task) {
 func printTask(t tasks.Task) {
 	pri := priorityMark(t.Priority)
 	due := formatDue(t.DueDate, t.DueDatetime)
-	content := truncate(t.Content, 50)
+	content := padRight(truncate(t.Content, 50), 50)
 	if showIDs {
 		// Full ID (not the short prefix) so the output is an unambiguous handle
 		// for scripting — shortID can collide across the full cache.
-		fmt.Printf("  %s  %s  %-50s  %s\n", t.ID, pri, content, due)
+		fmt.Printf("  %s  %s  %s  %s\n", t.ID, pri, content, due)
 		return
 	}
-	fmt.Printf("  %s  %-50s  %s\n", pri, content, due)
+	fmt.Printf("  %s  %s  %s\n", pri, content, due)
 }
 
 func priorityMark(p int) string {
@@ -568,12 +576,16 @@ func formatCompletedAt(iso string) string {
 	return t.Local().Format("01-02 15:04")
 }
 
+// truncate shortens s to at most n terminal columns, ending in "…" when cut.
+// Widths are display columns, so umlauts count once and CJK characters twice.
 func truncate(s string, n int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-1] + "…"
+	return runewidth.Truncate(s, n, "…")
+}
+
+// padRight pads s with spaces to n terminal columns; fmt's %-*s pads bytes.
+func padRight(s string, n int) string {
+	return runewidth.FillRight(s, n)
 }
 
 func filterTasksByPriority(ts []tasks.Task, priority int) []tasks.Task {
@@ -630,12 +642,17 @@ func taskCompleter(cmd *cobra.Command, args []string, toComplete string) ([]stri
 	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
+// terminalWidth prefers $COLUMNS (shells rarely export it, so it acts as an
+// override), then the size of the terminal on stdout, then 120 for pipes.
 func terminalWidth() int {
 	if cols := os.Getenv("COLUMNS"); cols != "" {
 		var n int
 		if _, err := fmt.Sscanf(cols, "%d", &n); err == nil && n > 0 {
 			return n
 		}
+	}
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
 	}
 	return 120
 }
@@ -666,7 +683,7 @@ func printBoard(ts []tasks.Task) {
 
 	const sep = " │ "
 	width := terminalWidth()
-	colWidth := (width - len(sep)*(len(cols)-1)) / len(cols)
+	colWidth := (width - runewidth.StringWidth(sep)*(len(cols)-1)) / len(cols)
 	if colWidth < 20 {
 		colWidth = 20
 	}
@@ -676,7 +693,7 @@ func printBoard(ts []tasks.Task) {
 		if i > 0 {
 			fmt.Print(sep)
 		}
-		fmt.Printf("%-*s", colWidth, truncate(col.name, colWidth))
+		fmt.Print(padRight(truncate(col.name, colWidth), colWidth))
 	}
 	fmt.Println()
 	// divider
@@ -708,10 +725,10 @@ func printBoard(ts []tasks.Task) {
 				if contentWidth < 4 {
 					contentWidth = 4
 				}
-				cell := fmt.Sprintf("%s %-*s", priorityMark(t.Priority), contentWidth, truncate(t.Content, contentWidth))
-				fmt.Printf("%-*s", colWidth, cell)
+				cell := priorityMark(t.Priority) + " " + truncate(t.Content, contentWidth)
+				fmt.Print(padRight(cell, colWidth))
 			} else {
-				fmt.Printf("%-*s", colWidth, "")
+				fmt.Print(strings.Repeat(" ", colWidth))
 			}
 		}
 		fmt.Println()

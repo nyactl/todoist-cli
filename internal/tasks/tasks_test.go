@@ -772,3 +772,42 @@ func TestShortIDs_DisambiguatesUncachedIDs(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestIDByPrefix(t *testing.T) {
+	conn := openTestDB(t)
+	seedProject(t, conn, "p1", "Work")
+	seedTask(t, conn, "abc123", "A", "p1", "")
+	seedTask(t, conn, "abc999", "B", "p1", "")
+	seedTask(t, conn, "abc", "Exact short", "p1", "")
+	for _, id := range []string{"abc000", "abc001", "abc002", "abc003"} {
+		seedTask(t, conn, id, "Same prefix", "p1", "")
+	}
+	conn.Exec(`INSERT INTO tasks (id, content, project_id, is_completed) VALUES ('zzz777', 'Done', 'p1', 1)`)
+	ctx := context.Background()
+
+	cases := []struct {
+		in, want string
+		ok       bool
+		errSub   string
+	}{
+		{"abc123", "abc123", true, ""},
+		{"abc1", "abc123", true, ""},
+		{"ABC1", "abc123", true, ""},
+		{"abc", "abc", true, ""},
+		{"zzz", "zzz777", true, ""},
+		{"nope", "", false, ""},
+		{"ab", "", false, "ambiguous"},
+	}
+	for _, c := range cases {
+		id, ok, err := tasks.IDByPrefix(ctx, conn, c.in)
+		if c.errSub != "" {
+			if err == nil || !strings.Contains(err.Error(), c.errSub) {
+				t.Errorf("IDByPrefix(%q) err = %v, want %q", c.in, err, c.errSub)
+			}
+			continue
+		}
+		if err != nil || ok != c.ok || id != c.want {
+			t.Errorf("IDByPrefix(%q) = %q, %v, %v; want %q, %v", c.in, id, ok, err, c.want, c.ok)
+		}
+	}
+}

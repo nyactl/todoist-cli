@@ -112,16 +112,6 @@ type CreateTaskRequest struct {
 	Order        int      `json:"order,omitempty"`
 }
 
-type UpdateTaskRequest struct {
-	Content     string   `json:"content,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	Priority    int      `json:"priority,omitempty"`
-	DueString   string   `json:"due_string,omitempty"`
-	DueDate     string   `json:"due_date,omitempty"`
-	DueDatetime string   `json:"due_datetime,omitempty"`
-}
-
 type CompletedTask struct {
 	TaskID      string `json:"task_id"`
 	Content     string `json:"content"`
