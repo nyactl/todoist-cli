@@ -1,10 +1,6 @@
 BIN      := ~/.local/bin/todoist-cli
 COV_OUT  := coverage.out
-COV_MIN  := 70
-
-# Packages that have tests and meaningful coverage targets.
-# internal/config and internal/todoist wrap keychain/HTTP — excluded.
-COV_PKGS := ./internal/db/... ./internal/state/... ./internal/tasks/...
+COV_MIN  := 80
 
 .PHONY: build install test test-live vet cover cover-html
 
@@ -25,7 +21,7 @@ vet:
 	go vet ./...
 
 cover:
-	go test $(COV_PKGS) -coverprofile=$(COV_OUT) -covermode=atomic
+	go test ./... -coverpkg=./... -coverprofile=$(COV_OUT) -covermode=atomic
 	@go tool cover -func=$(COV_OUT) | tail -1
 	@total=$$(go tool cover -func=$(COV_OUT) | tail -1 | awk '{print $$3}' | tr -d '%'); \
 	 echo "Coverage: $${total}% (minimum: $(COV_MIN)%)"; \
