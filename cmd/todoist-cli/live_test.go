@@ -31,7 +31,10 @@ const (
 	liveSharedProject = "tdc-live-shared"
 )
 
-var sweepOnce sync.Once
+var (
+	sweepOnce sync.Once
+	guarded   sync.Map
+)
 
 // liveEnv points the CLI at the real API as the account behind tokenVar, with
 // a fresh cache. Calling it again in the same test switches accounts.
@@ -44,8 +47,33 @@ func liveEnv(t *testing.T, tokenVar string) string {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("TODOIST_TOKEN", token)
 	t.Setenv("TODOIST_API_BASE", "")
+	if _, done := guarded.Load(token); !done {
+		requireTestAccount(t, tokenVar, token)
+		guarded.Store(token, true)
+	}
 	sweepOnce.Do(func() { sweepStale(t, token) })
 	return token
+}
+
+// requireTestAccount fails the test unless every project in the account is
+// Inbox or a tdc-live-* project, so a real account's token can never get as
+// far as creating or deleting anything.
+func requireTestAccount(t *testing.T, tokenVar, token string) {
+	t.Helper()
+	projects, err := todoist.New(token).GetProjects(context.Background())
+	if err != nil {
+		t.Fatalf("%s: list projects: %v", tokenVar, err)
+	}
+	var foreign []string
+	for _, p := range projects {
+		if p.Name != "Inbox" && !strings.HasPrefix(p.Name, livePrefix) {
+			foreign = append(foreign, p.Name)
+		}
+	}
+	if len(foreign) > 0 {
+		t.Fatalf("%s does not look like a throwaway test account (projects: %s) — refusing to run live tests",
+			tokenVar, strings.Join(foreign, ", "))
+	}
 }
 
 // sweepStale deletes projects left behind by an earlier run that died before
@@ -126,6 +154,14 @@ type liveTask struct {
 	} `json:"comments"`
 }
 
+// deadlineIs reports whether got matches want, where want "" means no deadline.
+func deadlineIs(got *string, want string) bool {
+	if want == "" {
+		return got == nil
+	}
+	return got != nil && *got == want
+}
+
 func showTask(t *testing.T, id string) liveTask {
 	t.Helper()
 	var task liveTask
@@ -148,8 +184,19 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	mustRun(t, "sync")
 	mustRun(t, "cd", project)
 
-	parent := strings.TrimSpace(mustRun(t, "add", "alpha", "-l", label, "-D", "tomorrow",
-		"-P", "4", "-d", "why", "--deadline", deadline, "-s", "Todo"))
+	// Deadlines are premium-only; on a free account check the readable error
+	// and carry on without one.
+	addArgs := []string{"add", "alpha", "-l", label, "-D", "tomorrow", "-P", "4", "-d", "why", "-s", "Todo"}
+	out, err := runCmd(t, append(addArgs, "--deadline", deadline)...)
+	if err != nil {
+		if !strings.Contains(err.Error(), "needs a paid Todoist plan") {
+			t.Fatalf("add with deadline: %v\n%s", err, out)
+		}
+		t.Logf("free account: skipping deadline checks (%v)", err)
+		deadline = ""
+		out = mustRun(t, addArgs...)
+	}
+	parent := strings.TrimSpace(out)
 	child := strings.TrimSpace(mustRun(t, "add", "alpha child", "--parent", parent))
 	other := strings.TrimSpace(mustRun(t, "add", "beta"))
 	mustRun(t, "sync")
@@ -163,7 +210,7 @@ func TestLiveTaskLifecycle(t *testing.T) {
 
 	listed := decodeJSON[[]jsonTask](t, mustRun(t, "ls", "--json"))
 	if i := slices.IndexFunc(listed, func(j jsonTask) bool { return j.ID == parent }); i < 0 ||
-		listed[i].Deadline == nil || *listed[i].Deadline != deadline || !slices.Contains(listed[i].Labels, label) {
+		!deadlineIs(listed[i].Deadline, deadline) || !slices.Contains(listed[i].Labels, label) {
 		t.Errorf("ls --json after sync: %+v", listed)
 	}
 	if sections := decodeJSON[[]map[string]string](t, mustRun(t, "sections", "--json")); len(sections) != 2 {
@@ -172,7 +219,7 @@ func TestLiveTaskLifecycle(t *testing.T) {
 
 	got := showTask(t, parent)
 	if got.Priority != 4 || got.Description != "why" || got.Due == nil ||
-		got.Deadline == nil || *got.Deadline != deadline ||
+		!deadlineIs(got.Deadline, deadline) ||
 		got.Section == nil || *got.Section != "Todo" ||
 		!slices.Contains(got.Labels, label) || len(got.Subtasks) != 1 {
 		t.Errorf("show after add: %+v", got)
