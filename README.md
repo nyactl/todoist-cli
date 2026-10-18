@@ -15,15 +15,15 @@ A fast, minimal command-line client for Todoist with a local SQLite cache. Desig
 
 Listing, filtering and searching read from a local SQLite cache, so they are instant and work offline. Syncing, changes, `show` (task details and comments) and completed-task history use the Todoist API.
 
-| | todoist-cli | [Official CLI](https://github.com/Doist/todoist-cli) | [sachaos/todoist](https://github.com/sachaos/todoist) |
-|---|---|---|---|
-| Runtime | Single Go binary | Node.js (npm) | Single Go binary |
-| Local cache for reads | SQLite | — | JSON file |
-| Kanban board view | `ls -b` | — | — |
-| Fuzzy picker | `pick` (uses fzf) | — | Shell scripts (peco/fzf) |
-| Machine-readable output | `--json` on every read command | `--json`, `--ndjson` | `--csv` |
-| Token storage | OS keychain | OS keychain | Plaintext config file |
-| Signed releases | cosign (Sigstore) | — | — |
+| | tdc for Todoist | [Official CLI](https://github.com/Doist/todoist-cli) |
+|---|---|---|
+| Runtime | Single Go binary | Node.js (npm) |
+| Local cache for reads | SQLite | — |
+| Kanban board view | `ls -b` | — |
+| Fuzzy picker | `pick` (uses fzf) | — |
+| Machine-readable output | `--json` on every read command | `--json`, `--ndjson` |
+| Token storage | OS keychain | OS keychain |
+| Signed releases | cosign (Sigstore) | — |
 
 Prefer the official CLI if you want OAuth login, a read-only mode, an accessibility mode or its extension system.
 
