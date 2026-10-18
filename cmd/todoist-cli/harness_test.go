@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/atotto/clipboard"
+	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
 	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
@@ -29,6 +30,7 @@ type testEnv struct {
 // Pass nil for handler if the test doesn't make API calls.
 func newTestEnv(t *testing.T, handler http.Handler) *testEnv {
 	t.Helper()
+	config.MockKeychain()
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("TODOIST_TOKEN", "test-token")
 
