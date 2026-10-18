@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.27.2] - 2026-10-18
+
+### Bug Fixes
+
+- Size board to the real terminal and measure text by display width (#33)
+- Resolve short IDs in open so IDs printed by ls --done work (#35)
+- Start relative --done periods at midnight and reject malformed periods (#38)
+
+### Documentation
+
+- List as tdc for Todoist, add privacy policy and Todoist's required disclaimer (#37)
+
+
 ## [1.27.1] - 2026-10-18
 
 ### Bug Fixes
