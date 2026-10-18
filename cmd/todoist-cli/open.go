@@ -6,6 +6,7 @@ import (
 
 	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
@@ -18,21 +19,30 @@ var openCmd = &cobra.Command{
 	ValidArgsFunction: completedTaskCompleter,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
+		conn, err := db.Open()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		// Short IDs printed by ls --done resolve through the cache; a full ID
+		// of a task that was never cached goes to the API unchanged.
+		id := args[0]
+		if resolved, ok, err := tasks.IDByPrefix(ctx, conn, id); err != nil {
+			return err
+		} else if ok {
+			id = resolved
+		}
+
 		token, err := config.GetToken()
 		if err != nil {
 			return err
 		}
-		client := todoist.New(token)
-		if err := client.ReopenTask(ctx, args[0]); err != nil {
+		if err := todoist.New(token).ReopenTask(ctx, id); err != nil {
 			return err
 		}
-		conn, err := db.Open()
-		if err != nil {
-			return nil
-		}
-		defer conn.Close()
-		conn.ExecContext(ctx, `UPDATE tasks SET is_completed=0 WHERE id=?`, args[0])
-		fmt.Printf("reopened  %s\n", shortID(ctx, args[0]))
+		conn.ExecContext(ctx, `UPDATE tasks SET is_completed=0 WHERE id=?`, id)
+		fmt.Printf("reopened  %s\n", shortID(ctx, id))
 		return nil
 	},
 }

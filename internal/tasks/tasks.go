@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -357,4 +358,41 @@ func commonPrefixLen(a, b string) int {
 		n++
 	}
 	return n
+}
+
+// IDByPrefix resolves an exact ID or unique ID prefix among cached tasks,
+// completed ones included, matching ByID's case-insensitive prefix rule.
+// ok is false when no cached task matches.
+func IDByPrefix(ctx context.Context, db *sql.DB, prefix string) (id string, ok bool, err error) {
+	err = db.QueryRowContext(ctx, `SELECT id FROM tasks WHERE id = ?`, prefix).Scan(&id)
+	if err == nil {
+		return id, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", false, fmt.Errorf("resolve task id: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT id FROM tasks WHERE id LIKE ? LIMIT 2`, prefix+"%")
+	if err != nil {
+		return "", false, fmt.Errorf("resolve task id: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		if err := rows.Scan(&id); err != nil {
+			return "", false, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	switch len(ids) {
+	case 0:
+		return "", false, nil
+	case 1:
+		return ids[0], true, nil
+	default:
+		return "", false, fmt.Errorf("prefix %q is ambiguous — use more characters", prefix)
+	}
 }
