@@ -177,7 +177,7 @@ tdc stats --json | jq .overdue                                     # for a promp
 
 ### Periods for `--done`
 
-`today`, `week`, `month`, `year`, `Nd`, `Nw`, `Nm` — e.g. `7d`, `2w`, `3m`
+`today`, `week`, `month`, `year`, `Nd`, `Nw`, `Nm` — e.g. `7d`, `2w`, `3m`. Every period starts at local midnight, so `7d` and `1w` cover the same days as `week`.
 
 ### Completed tasks are scoped to the active project
 

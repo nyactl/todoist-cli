@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -388,6 +390,10 @@ func completedLabelSet(ctx context.Context, db *sql.DB, ids []any, idPH []string
 	return set, rows.Err()
 }
 
+var relativePeriod = regexp.MustCompile(`^([0-9]+)([a-z])$`)
+
+// parseSince turns a --done period into the start of the window. Every period
+// starts at local midnight, so 7d and 1w cover the same days as week.
 func parseSince(s string) (time.Time, error) {
 	now := time.Now()
 	startOfDay := func(t time.Time) time.Time {
@@ -403,23 +409,23 @@ func parseSince(s string) (time.Time, error) {
 	case "year":
 		return startOfDay(now.AddDate(-1, 0, 0)), nil
 	}
-	if len(s) < 2 {
+	m := relativePeriod.FindStringSubmatch(s)
+	n := 0
+	if m != nil {
+		n, _ = strconv.Atoi(m[1])
+	}
+	if n <= 0 {
 		return time.Time{}, fmt.Errorf("unknown period %q — use: today, week, month, year, Nd, Nw, Nm", s)
 	}
-	unit := s[len(s)-1]
-	var n int
-	if _, err := fmt.Sscanf(s[:len(s)-1], "%d", &n); err != nil || n <= 0 {
-		return time.Time{}, fmt.Errorf("unknown period %q — use: today, week, month, year, Nd, Nw, Nm", s)
-	}
-	switch unit {
-	case 'd':
-		return now.AddDate(0, 0, -n), nil
-	case 'w':
-		return now.AddDate(0, 0, -n*7), nil
-	case 'm':
-		return now.AddDate(0, -n, 0), nil
+	switch m[2] {
+	case "d":
+		return startOfDay(now.AddDate(0, 0, -n)), nil
+	case "w":
+		return startOfDay(now.AddDate(0, 0, -n*7)), nil
+	case "m":
+		return startOfDay(now.AddDate(0, -n, 0)), nil
 	default:
-		return time.Time{}, fmt.Errorf("unknown unit %q — use d (days), w (weeks), m (months)", string(unit))
+		return time.Time{}, fmt.Errorf("unknown unit %q — use d (days), w (weeks), m (months)", m[2])
 	}
 }
 
