@@ -122,3 +122,66 @@ func TestLsDone_ShortIDsAreUniqueAndAligned(t *testing.T) {
 		}
 	}
 }
+
+func completedTwoProjects() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"items":[` +
+			`{"task_id":"c1","content":"Ship release","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
+			`{"task_id":"c2","content":"Mow lawn","project_id":"p2","completed_at":"2026-08-12T10:00:00Z"},` +
+			`{"task_id":"c3","content":"Orphan","project_id":"gone","completed_at":"2026-08-12T11:00:00Z"}` +
+			`],"projects":{"p1":{"name":"Work"},"p2":{"name":"Home"}},"sections":{}}`))
+	})
+	return mux
+}
+
+func TestLsDone_NoContext_GroupsByProject(t *testing.T) {
+	newTestEnv(t, completedTwoProjects())
+	out, err := runCmd(t, "ls", "--done", "week")
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, home, orphan := strings.Index(out, "  Work\n"), strings.Index(out, "  Home\n"), strings.Index(out, "(no project)")
+	if work < 0 || home < 0 || orphan < 0 || !(work < home && home < orphan) {
+		t.Fatalf("expected Work, Home, (no project) groups in API order:\n%s", out)
+	}
+	if !strings.Contains(out[work:home], "Ship release") || !strings.Contains(out[home:orphan], "Mow lawn") {
+		t.Errorf("tasks under the wrong project:\n%s", out)
+	}
+}
+
+func TestLsDone_LabelFilters(t *testing.T) {
+	env := newTestEnv(t, completedTwoProjects())
+	for _, row := range [][2]string{{"c1", "release"}, {"c1", "work"}, {"c2", "work"}} {
+		env.conn.Exec(`INSERT INTO tasks (id, content, is_completed) VALUES (?, 'x', 1) ON CONFLICT DO NOTHING`, row[0])
+		env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES (?, ?)`, row[0], row[1])
+	}
+
+	out, err := runCmd(t, "ls", "--done", "week", "-l", "work", "-l", "release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Ship release") || strings.Contains(out, "Mow lawn") || strings.Contains(out, "Orphan") {
+		t.Errorf("-l work -l release should keep only c1:\n%s", out)
+	}
+
+	out, err = runCmd(t, "ls", "--done", "week", "--not-label", "release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "Ship release") || !strings.Contains(out, "Mow lawn") || !strings.Contains(out, "Orphan") {
+		t.Errorf("--not-label release should drop only c1:\n%s", out)
+	}
+}
+
+func TestLsDone_APIErrorIsReturned(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	})
+	newTestEnv(t, mux)
+	if _, err := runCmd(t, "ls", "--done", "today"); err == nil || !strings.Contains(err.Error(), "502") {
+		t.Errorf("err = %v, want the HTTP 502", err)
+	}
+}

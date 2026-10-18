@@ -28,17 +28,28 @@ func GetToken() (string, error) {
 	return token, nil
 }
 
-func DeleteToken() error {
-	// go-keyring's delete silently fails on macOS for unsigned binaries.
-	// Use the security CLI directly, scoped to our exact service and account.
-	err := exec.Command("security",
+// securityDelete removes the token with the macOS security CLI, because
+// go-keyring's delete silently fails on macOS for unsigned binaries.
+var securityDelete = func() error {
+	return exec.Command("security",
 		"delete-generic-password",
 		"-s", keyringService,
 		"-a", keyringUser,
 	).Run()
-	if err != nil {
+}
+
+func DeleteToken() error {
+	if err := securityDelete(); err != nil {
 		// Fall back to go-keyring; also handles non-macOS platforms.
 		return keyring.Delete(keyringService, keyringUser)
 	}
 	return nil
+}
+
+// MockKeychain replaces the system keychain with an empty in-memory store for
+// the rest of the process. Tests call it so they can never read, overwrite or
+// delete the real token.
+func MockKeychain() {
+	keyring.MockInit()
+	securityDelete = func() error { return keyring.ErrNotFound }
 }
