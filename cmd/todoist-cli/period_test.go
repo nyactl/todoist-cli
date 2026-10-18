@@ -24,22 +24,30 @@ func TestParseSince_NamedPeriodsStartAtMidnight(t *testing.T) {
 	}
 }
 
-func TestParseSince_RelativePeriods(t *testing.T) {
+func TestParseSince_RelativePeriodsStartAtMidnight(t *testing.T) {
+	now := time.Now()
+	midnight := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()) }
 	cases := map[string]time.Time{
-		"3d":  time.Now().AddDate(0, 0, -3),
-		"2w":  time.Now().AddDate(0, 0, -14),
-		"6m":  time.Now().AddDate(0, -6, 0),
-		"30d": time.Now().AddDate(0, 0, -30),
+		"1d":  midnight(now.AddDate(0, 0, -1)),
+		"3d":  midnight(now.AddDate(0, 0, -3)),
+		"2w":  midnight(now.AddDate(0, 0, -14)),
+		"6m":  midnight(now.AddDate(0, -6, 0)),
+		"30d": midnight(now.AddDate(0, 0, -30)),
 	}
 	for in, want := range cases {
 		got, err := parseSince(in)
-		if err != nil {
-			t.Errorf("parseSince(%q): %v", in, err)
-			continue
+		if err != nil || !got.Equal(want) {
+			t.Errorf("parseSince(%q) = %v, %v; want %v", in, got, err, want)
 		}
-		if d := got.Sub(want); d < -time.Second || d > time.Second {
-			t.Errorf("parseSince(%q) = %v, want about %v", in, got, want)
-		}
+	}
+}
+
+func TestParseSince_SevenDaysEqualsWeek(t *testing.T) {
+	week, _ := parseSince("week")
+	d7, _ := parseSince("7d")
+	w1, _ := parseSince("1w")
+	if !d7.Equal(week) || !w1.Equal(week) {
+		t.Errorf("week = %v, 7d = %v, 1w = %v; want all equal", week, d7, w1)
 	}
 }
 
@@ -51,6 +59,10 @@ func TestParseSince_Invalid(t *testing.T) {
 		"d":    "unknown period",
 		"abcd": "unknown period",
 		"3y":   "unknown unit",
+		"1.5d": "unknown period",
+		"3dd":  "unknown period",
+		"2 d":  "unknown period",
+		"+3d":  "unknown period",
 	}
 	for in, want := range cases {
 		if _, err := parseSince(in); err == nil || !strings.Contains(err.Error(), want) {
