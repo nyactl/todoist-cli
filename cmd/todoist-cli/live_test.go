@@ -259,6 +259,11 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	if out := mustRun(t, "ls", "--done", "today"); !strings.Contains(out, "alpha child") {
 		t.Errorf("ls --done today missing completed subtask:\n%s", out)
 	}
+	// Reopen by a short prefix, as printed by ls --done, then complete again.
+	if out := mustRun(t, "open", child[:10]); !strings.Contains(out, "reopened") {
+		t.Errorf("open by prefix:\n%s", out)
+	}
+	mustRun(t, "done", child)
 
 	mustRun(t, "rm", other)
 	mustRun(t, "sync")
