@@ -2,6 +2,8 @@ module github.com/nyactl/todoist-cli
 
 go 1.26.2
 
+toolchain go1.26.9
+
 require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/google/uuid v1.6.0

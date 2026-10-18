@@ -2,7 +2,6 @@
 
 [![Release](https://img.shields.io/github/v/release/nyactl/todoist-cli)](https://github.com/nyactl/todoist-cli/releases/latest)
 [![CI](https://github.com/nyactl/todoist-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/nyactl/todoist-cli/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/nyactl/todoist-cli)](https://goreportcard.com/report/github.com/nyactl/todoist-cli)
 [![License: MIT](https://img.shields.io/github/license/nyactl/todoist-cli)](LICENSE)
 
 A fast, minimal command-line client for Todoist with a local SQLite cache. Designed for keyboard-driven workflows. Installed as `todoist-cli`; the examples use the alias `tdc`.
