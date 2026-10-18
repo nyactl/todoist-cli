@@ -21,6 +21,12 @@ jobs:
       - name: vet
         run: go vet ./...
 
+      - name: staticcheck
+        run: make lint
+
+      - name: govulncheck
+        run: make vuln
+
       - name: test
         run: go test ./...
 

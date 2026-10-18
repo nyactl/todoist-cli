@@ -2,7 +2,11 @@ BIN      := ~/.local/bin/todoist-cli
 COV_OUT  := coverage.out
 COV_MIN  := 80
 
-.PHONY: build install test test-live vet cover cover-html
+# Pinned so CI is reproducible; staticcheck needs v0.8.2+ for Go 1.26.
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.2
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.8.0
+
+.PHONY: build install test test-live vet lint vuln cover cover-html
 
 build:
 	go build -o todoist-cli ./cmd/todoist-cli
@@ -19,6 +23,13 @@ test-live:
 
 vet:
 	go vet ./...
+
+lint:
+	go run $(STATICCHECK) ./...
+	go run $(STATICCHECK) -tags live ./cmd/todoist-cli
+
+vuln:
+	go run $(GOVULNCHECK) ./...
 
 cover:
 	go test ./... -coverpkg=./... -coverprofile=$(COV_OUT) -covermode=atomic
