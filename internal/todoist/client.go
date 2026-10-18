@@ -34,9 +34,13 @@ type APIError struct {
 	// They are zero-valued when the body is not the expected JSON shape.
 	ErrorCode int
 	ErrorTag  string
+	Message   string
 }
 
 func (e *APIError) Error() string {
+	if e.ErrorTag == "PREMIUM_ONLY" && e.Message != "" {
+		return fmt.Sprintf("todoist: %s — this needs a paid Todoist plan", e.Message)
+	}
 	return fmt.Sprintf("todoist: HTTP %d: %s", e.StatusCode, e.Body)
 }
 
@@ -45,12 +49,14 @@ func (e *APIError) Error() string {
 func newAPIError(statusCode int, body []byte) *APIError {
 	e := &APIError{StatusCode: statusCode, Body: string(body)}
 	var parsed struct {
+		Error     string `json:"error"`
 		ErrorCode int    `json:"error_code"`
 		ErrorTag  string `json:"error_tag"`
 	}
 	if json.Unmarshal(body, &parsed) == nil {
 		e.ErrorCode = parsed.ErrorCode
 		e.ErrorTag = parsed.ErrorTag
+		e.Message = parsed.Error
 	}
 	return e
 }

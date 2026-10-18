@@ -33,3 +33,19 @@ func TestNewAPIError_NonJSONBodyIsZeroValued(t *testing.T) {
 		t.Errorf("Body not preserved: %q", e.Body)
 	}
 }
+
+func TestAPIError_PremiumOnlyIsReadable(t *testing.T) {
+	body := []byte(`{"error":"Deadlines are a premium only feature","error_code":32,"error_extra":{"event_id":"x","retry_after":4},"error_tag":"PREMIUM_ONLY","http_code":403}`)
+	got := newAPIError(403, body).Error()
+	want := "todoist: Deadlines are a premium only feature — this needs a paid Todoist plan"
+	if got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestAPIError_OtherErrorsKeepRawBody(t *testing.T) {
+	body := []byte(`{"error":"Project not found","error_code":478,"error_tag":"NOT_FOUND","http_code":404}`)
+	if got := newAPIError(404, body).Error(); got != "todoist: HTTP 404: "+string(body) {
+		t.Errorf("Error() = %q", got)
+	}
+}
