@@ -13,7 +13,7 @@ A fast, minimal command-line client for Todoist with a local SQLite cache. Desig
 
 ## Why this one?
 
-Listing, filtering and searching read from a local SQLite cache, so they are instant and work offline. Syncing, changes, `show` (task details and comments) and completed-task history use the Todoist API.
+Listing, filtering and searching read from a local SQLite cache, so they are instant and work offline. `show` fetches the latest details and comments, and falls back to the cached details when Todoist can't be reached. Syncing, changes and completed-task history use the Todoist API.
 
 | | tdc for Todoist | [Official CLI](https://github.com/Doist/todoist-cli) |
 |---|---|---|
@@ -121,7 +121,7 @@ export TODOIST_TOKEN=your_token_here
 | `edit <task> -l <label>` | Replace the entire label set (repeatable) |
 | `edit <task> --add-label <label>` | Add labels, keeping existing ones (repeatable, idempotent) |
 | `edit <task> --remove-label <label>` | Remove labels, keeping the rest (repeatable, idempotent) |
-| `show <task>` | Show full task details — project, priority, due, deadline, labels, subtasks, and comments |
+| `show <task>` | Show full task details — project, priority, due, deadline, labels, subtasks, and comments. Offline, shows the cached details without comments |
 | `show <task> --json` | Emit the task as a machine-readable JSON object (id, content, project, section, priority, labels, due, deadline, created_at, url, subtasks, comments) for `jq`/scripting |
 | `mv <task> <section>` | Move task to a different section within the current project |
 | `mv <task> -p <project>` | Move task to a different project |

@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -16,7 +20,7 @@ import (
 
 var showCmd = &cobra.Command{
 	Use:               "show <id>",
-	Short:             "Show full task details (live API call)",
+	Short:             "Show full task details (live API call; cached details when offline)",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: taskCompleter,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -24,9 +28,11 @@ var showCmd = &cobra.Command{
 
 		// resolve prefix → full ID from local cache if possible
 		taskID := args[0]
+		var cached *todoist.Task
 		if conn, err := db.Open(); err == nil {
 			if t, err := tasks.ByID(ctx, conn, args[0]); err == nil {
 				taskID = t.ID
+				cached = cachedTask(ctx, conn, t)
 			}
 			conn.Close()
 		}
@@ -37,12 +43,20 @@ var showCmd = &cobra.Command{
 		}
 		client := todoist.New(token)
 		t, err := client.GetTask(ctx, taskID)
+		offline := false
 		if err != nil {
-			return err
+			if cached == nil || !isNetworkError(err) {
+				return err
+			}
+			t, offline = cached, true
+			fmt.Fprintln(os.Stderr, "offline — showing cached details; comments are not available")
 		}
 
 		// Comments + resolved author names — shared by both output modes.
-		comments, _ := client.GetComments(ctx, t.ID)
+		var comments []todoist.Comment
+		if !offline {
+			comments, _ = client.GetComments(ctx, t.ID)
+		}
 		authorProject := ""
 		if len(comments) > 0 {
 			authorProject = t.ProjectID
@@ -274,4 +288,39 @@ func init() {
 	showCmd.Flags().BoolVar(&showJSON, "json", false, "emit the task as a machine-readable JSON object")
 	showCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	root.AddCommand(showCmd)
+}
+
+// isNetworkError reports whether err means the API could not be reached at
+// all, as opposed to an error response from it (which must not be masked by
+// stale cache, e.g. a 404 for a task deleted elsewhere).
+func isNetworkError(err error) bool {
+	var apiErr *todoist.APIError
+	if errors.As(err, &apiErr) {
+		return false
+	}
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
+}
+
+// cachedTask rebuilds the API view of a task from the local cache.
+func cachedTask(ctx context.Context, conn *sql.DB, c *tasks.Task) *todoist.Task {
+	t := &todoist.Task{
+		ID:          c.ID,
+		Content:     c.Content,
+		Description: c.Description,
+		Priority:    c.Priority,
+		ProjectID:   c.ProjectID,
+		SectionID:   c.SectionID,
+		ParentID:    c.ParentID,
+		URL:         c.URL,
+	}
+	t.Labels, _ = tasks.Labels(ctx, conn, c.ID)
+	if c.DueDate != "" {
+		t.Due = &todoist.Due{Date: c.DueDate, Datetime: c.DueDatetime, String: c.DueString, IsRecurring: c.DueRecurring}
+	}
+	if c.DeadlineDate != "" {
+		t.Deadline = &todoist.Deadline{Date: c.DeadlineDate}
+	}
+	conn.QueryRowContext(ctx, `SELECT created_at FROM tasks WHERE id = ?`, c.ID).Scan(&t.CreatedAt)
+	return t
 }
