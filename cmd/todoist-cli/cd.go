@@ -37,6 +37,10 @@ var cdCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// The argument may be an ID; store the project's own name for display.
+		if err := conn.QueryRowContext(ctx, `SELECT name FROM projects WHERE id = ?`, id).Scan(&name); err != nil {
+			return err
+		}
 		if err := state.Save(&state.State{ProjectID: id, ProjectName: name}); err != nil {
 			return err
 		}
