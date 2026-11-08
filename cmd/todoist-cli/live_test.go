@@ -265,6 +265,17 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	}
 	mustRun(t, "done", child)
 
+	// Rescheduling in overdue keeps the new date in the cache.
+	late := strings.TrimSpace(mustRun(t, "add", "epsilon", "-D", "yesterday"))
+	root.SetIn(strings.NewReader("r today\nq\n"))
+	mustRun(t, "overdue")
+	root.SetIn(nil)
+	today := time.Now().Format("2006-01-02")
+	listed = decodeJSON[[]jsonTask](t, mustRun(t, "ls", "--json"))
+	if i := slices.IndexFunc(listed, func(j jsonTask) bool { return j.ID == late }); i < 0 || listed[i].Due == nil || listed[i].Due.Date != today {
+		t.Errorf("rescheduled task should be due today in the cache: %+v", listed)
+	}
+
 	mustRun(t, "rm", other)
 	mustRun(t, "sync")
 	if out := mustRun(t, "ls", "--ids"); strings.Contains(out, other) {

@@ -104,7 +104,7 @@ var overdueCmd = &cobra.Command{
 						fmt.Fprintln(out, "  ! invalid date — try again")
 						continue
 					}
-					conn.ExecContext(ctx, `UPDATE tasks SET due_date=NULL, due_string=? WHERE id=?`, dateStr, t.ID)
+					upsertTasks(ctx, conn, []todoist.Task{*updated})
 					if updated.Due == nil {
 						fmt.Fprintln(out, "  → due date cleared")
 					} else {
