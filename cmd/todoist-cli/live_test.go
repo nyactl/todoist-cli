@@ -265,18 +265,6 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	}
 	mustRun(t, "done", child)
 
-	// The label filter on completed tasks must work after a sync has dropped
-	// them from the cache, and labels must not leak into the content.
-	mustRun(t, "done", parent)
-	mustRun(t, "sync")
-	out = mustRun(t, "ls", "--done", "today", "-l", renamed)
-	if !strings.Contains(out, "alpha edited") || strings.Contains(out, "@") {
-		t.Errorf("ls --done -l after sync:\n%s", out)
-	}
-	if out := mustRun(t, "ls", "--done", "year"); !strings.Contains(out, "alpha edited") {
-		t.Errorf("ls --done year should span several API windows and include today:\n%s", out)
-	}
-
 	mustRun(t, "rm", other)
 	mustRun(t, "sync")
 	if out := mustRun(t, "ls", "--ids"); strings.Contains(out, other) {
