@@ -184,6 +184,20 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	mustRun(t, "sync")
 	mustRun(t, "cd", project)
 
+	// A project deleted from another client leaves the cache on the next sync.
+	goneID, gone := liveProject(t, token)
+	mustRun(t, "sync")
+	if out := mustRun(t, "projects"); !strings.Contains(out, gone) {
+		t.Errorf("projects missing %s after sync:\n%s", gone, out)
+	}
+	if err := todoist.New(token).DeleteProject(context.Background(), goneID); err != nil {
+		t.Fatalf("delete project: %v", err)
+	}
+	mustRun(t, "sync")
+	if out := mustRun(t, "projects"); strings.Contains(out, gone) {
+		t.Errorf("project deleted on the server still listed after sync:\n%s", out)
+	}
+
 	// Deadlines are premium-only; on a free account check the readable error
 	// and carry on without one.
 	addArgs := []string{"add", "alpha", "-l", label, "-D", "tomorrow", "-P", "4", "-d", "why", "-s", "Todo"}

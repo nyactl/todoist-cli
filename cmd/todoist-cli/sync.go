@@ -224,6 +224,9 @@ func writeLabels(ctx context.Context, db *sql.DB, items []todoist.Label) (int, e
 		return 0, err
 	}
 	defer tx.Rollback()
+	if err := purgeMissing(ctx, tx, "labels", "", "", ids(items, func(l todoist.Label) string { return l.ID })); err != nil {
+		return 0, err
+	}
 	for _, l := range items {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO labels(id,name,color,ord,is_favorite) VALUES(?,?,?,?,?)
@@ -244,6 +247,12 @@ func writeProjects(ctx context.Context, db *sql.DB, items []todoist.Project) (in
 		return 0, err
 	}
 	defer tx.Rollback()
+	// Projects deleted or archived elsewhere are not in the list any more;
+	// dropping them cascades to their sections and detaches their tasks,
+	// which writeTasks then skips (#43).
+	if err := purgeMissing(ctx, tx, "projects", "", "", ids(items, func(p todoist.Project) string { return p.ID })); err != nil {
+		return 0, err
+	}
 	for _, p := range items {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO projects(id,name,color,ord,parent_id,is_archived,is_favorite,view_style)
@@ -269,24 +278,12 @@ func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section, pro
 	}
 	defer tx.Rollback()
 
+	scopeCol := ""
 	if projectID != "" {
-		ids := make([]any, 0, len(items)+1)
-		ids = append(ids, projectID)
-		placeholders := make([]string, len(items))
-		for i, s := range items {
-			ids = append(ids, s.ID)
-			placeholders[i] = "?"
-		}
-		if len(items) > 0 {
-			_, err = tx.ExecContext(ctx,
-				`DELETE FROM sections WHERE project_id = ? AND id NOT IN (`+strings.Join(placeholders, ",")+`)`,
-				ids...)
-		} else {
-			_, err = tx.ExecContext(ctx, `DELETE FROM sections WHERE project_id = ?`, projectID)
-		}
-		if err != nil {
-			return 0, fmt.Errorf("purge sections: %w", err)
-		}
+		scopeCol = "project_id"
+	}
+	if err := purgeMissing(ctx, tx, "sections", scopeCol, projectID, ids(items, func(s todoist.Section) string { return s.ID })); err != nil {
+		return 0, err
 	}
 
 	for i, s := range items {
@@ -310,38 +307,12 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 	}
 	defer tx.Rollback()
 
-	ids := make([]any, len(items))
-	for i, t := range items {
-		ids[i] = t.ID
-	}
+	scopeCol := ""
 	if projectID != "" {
-		// Scoped delete: only remove tasks in this project that are no longer returned.
-		if len(ids) > 0 {
-			placeholders := strings.Repeat("?,", len(ids))
-			placeholders = placeholders[:len(placeholders)-1]
-			scopedIDs := append([]any{projectID}, ids...)
-			if _, err := tx.ExecContext(ctx,
-				`DELETE FROM tasks WHERE project_id = ? AND id NOT IN (`+placeholders+`)`, scopedIDs...); err != nil {
-				return 0, fmt.Errorf("purge deleted tasks: %w", err)
-			}
-		} else {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE project_id = ?`, projectID); err != nil {
-				return 0, fmt.Errorf("purge all project tasks: %w", err)
-			}
-		}
-	} else {
-		if len(ids) > 0 {
-			placeholders := strings.Repeat("?,", len(ids))
-			placeholders = placeholders[:len(placeholders)-1]
-			if _, err := tx.ExecContext(ctx,
-				`DELETE FROM tasks WHERE id NOT IN (`+placeholders+`)`, ids...); err != nil {
-				return 0, fmt.Errorf("purge deleted tasks: %w", err)
-			}
-		} else {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
-				return 0, fmt.Errorf("purge all tasks: %w", err)
-			}
-		}
+		scopeCol = "project_id"
+	}
+	if err := purgeMissing(ctx, tx, "tasks", scopeCol, projectID, ids(items, func(t todoist.Task) string { return t.ID })); err != nil {
+		return 0, err
 	}
 	written, skipped := 0, 0
 	for _, t := range items {
@@ -477,6 +448,39 @@ func upsertTasks(ctx context.Context, db *sql.DB, items []todoist.Task) {
 				t.ID, label)
 		}
 	}
+}
+
+// purgeMissing deletes the rows of table whose id is not in keep — the ones
+// the API no longer returns — optionally only where scopeCol = scopeVal.
+func purgeMissing(ctx context.Context, tx *sql.Tx, table, scopeCol, scopeVal string, keep []string) error {
+	var where []string
+	var args []any
+	if scopeCol != "" {
+		where = append(where, scopeCol+" = ?")
+		args = append(args, scopeVal)
+	}
+	if len(keep) > 0 {
+		where = append(where, "id NOT IN ("+strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")+")")
+		for _, id := range keep {
+			args = append(args, id)
+		}
+	}
+	q := "DELETE FROM " + table
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("purge %s: %w", table, err)
+	}
+	return nil
+}
+
+func ids[T any](items []T, id func(T) string) []string {
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = id(it)
+	}
+	return out
 }
 
 func boolToInt(b bool) int {
