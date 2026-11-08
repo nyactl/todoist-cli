@@ -146,8 +146,10 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	if len(ts) > 1 {
 		return nil, fmt.Errorf("prefix %q is ambiguous (%d matches) — use more characters", idOrPrefix, len(ts))
 	}
-	// case-insensitive exact content match
-	ts, err = query(ctx, db, selectCols+` WHERE lower(t.content) = lower(?)`, idOrPrefix)
+	// Case-insensitive exact content match. Names only match active tasks: a
+	// task completed through the CLI stays cached until the next sync and
+	// would otherwise make a new task with the same title ambiguous.
+	ts, err = query(ctx, db, selectCols+` WHERE t.is_completed = 0 AND lower(t.content) = lower(?)`, idOrPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +161,7 @@ func ByID(ctx context.Context, db *sql.DB, idOrPrefix string) (*Task, error) {
 	}
 
 	// case-insensitive substring match as final fallback
-	ts, err = query(ctx, db, selectCols+` WHERE lower(t.content) LIKE lower(?)`, "%"+idOrPrefix+"%")
+	ts, err = query(ctx, db, selectCols+` WHERE t.is_completed = 0 AND lower(t.content) LIKE lower(?)`, "%"+idOrPrefix+"%")
 	if err != nil {
 		return nil, err
 	}
