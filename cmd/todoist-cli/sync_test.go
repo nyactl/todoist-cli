@@ -158,10 +158,11 @@ func TestSync_SectionOrderMatchesAPIOrder(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/labels", pageResponse([]todoist.Label{}))
 	mux.HandleFunc("/projects", pageResponse([]todoist.Project{{ID: "p1", Name: "Work"}}))
+	// Returned out of order on purpose: the cache must follow section_order.
 	mux.HandleFunc("/sections", pageResponse([]todoist.Section{
-		{ID: "s1", Name: "Backlog", ProjectID: "p1", Order: 0},
-		{ID: "s2", Name: "In Progress", ProjectID: "p1", Order: 0},
-		{ID: "s3", Name: "Done", ProjectID: "p1", Order: 0},
+		{ID: "s3", Name: "Done", ProjectID: "p1", Order: 3},
+		{ID: "s1", Name: "Backlog", ProjectID: "p1", Order: 1},
+		{ID: "s2", Name: "In Progress", ProjectID: "p1", Order: 2},
 	}))
 	mux.HandleFunc("/tasks", pageResponse([]todoist.Task{}))
 	env := newTestEnv(t, mux)

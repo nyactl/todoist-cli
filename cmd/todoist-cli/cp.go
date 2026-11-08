@@ -6,13 +6,10 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/nyactl/todoist-cli/internal/db"
 	"github.com/nyactl/todoist-cli/internal/tasks"
+	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
 )
-
-func taskURL(id string) string {
-	return "https://app.todoist.com/app/task/" + id
-}
 
 var cpCmd = &cobra.Command{
 	Use:               "cp <task>",
@@ -33,7 +30,7 @@ var cpCmd = &cobra.Command{
 			return err
 		}
 
-		url := taskURL(task.ID)
+		url := todoist.TaskURL(task.ID)
 
 		if err := clipboard.WriteAll(url); err != nil {
 			return fmt.Errorf("clipboard: %w", err)

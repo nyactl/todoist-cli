@@ -470,7 +470,7 @@ func TestShow_NoDueDate_Omitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show: %v", err)
 	}
-	if strings.Contains(out, "due") {
+	if strings.Contains(out, "\ndue ") {
 		t.Errorf("expected no due date in output, got: %q", out)
 	}
 }
