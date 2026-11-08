@@ -108,7 +108,7 @@ var statsCmd = &cobra.Command{
 			if res, err := client.GetCompletedSince(ctx, sinceWeek, projectFilter); err == nil {
 				for _, t := range res.Tasks {
 					doneWeekCount++
-					if t.CompletedAt >= sinceDay.Format(time.RFC3339)[:10] {
+					if completedSince(t.CompletedAt, sinceDay) {
 						doneToday++
 					}
 				}
@@ -125,6 +125,14 @@ var statsCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// completedSince reports whether a UTC completed_at timestamp lies at or
+// after start. Comparing it with a local date as text is off by the UTC
+// offset (#46).
+func completedSince(completedAt string, start time.Time) bool {
+	t, err := time.Parse(time.RFC3339Nano, completedAt)
+	return err == nil && !t.Before(start)
 }
 
 func init() {
