@@ -130,7 +130,7 @@ func TestComplete_DonePeriods(t *testing.T) {
 }
 
 func TestComplete_OpenOffersTasksCompletedToday(t *testing.T) {
-	newTestEnv(t, completedHandler(`{"task_id":"tc1","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`))
+	newTestEnv(t, completedHandler(`{"id":"tc1","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`))
 	got, _ := complete(t, "open", "")
 	if strings.Join(got, "|") != "tc1\tfinished thing" {
 		t.Errorf("open completions = %q", got)
@@ -142,7 +142,7 @@ func TestComplete_OpenOffersTasksCompletedToday(t *testing.T) {
 
 func TestComplete_OpenReportsAPIFailure(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	newTestEnv(t, mux)

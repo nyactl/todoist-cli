@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -221,20 +222,24 @@ func runLsDone(cmd *cobra.Command) error {
 	if scoped {
 		projectID = st.ProjectID
 	}
-	res, err := client.GetCompletedSince(ctx, since, projectID)
+	items, err := client.GetCompleted(ctx, since, completedUntil(), projectID)
 	if err != nil {
 		return fmt.Errorf("fetch completed: %w", err)
 	}
+	projectName, err := cachedNames(ctx, conn, "projects")
+	if err != nil {
+		return err
+	}
+	sectionName, err := cachedNames(ctx, conn, "sections")
+	if err != nil {
+		return err
+	}
 
-	items := res.Tasks
 	if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
-		if err := validateLabels(ctx, conn, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
+		if err := validateCompletedLabels(ctx, conn, items, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
 			return err
 		}
-		items, err = filterCompletedByLabels(ctx, conn, items, lsLabels, lsNotLabels)
-		if err != nil {
-			return err
-		}
+		items = filterCompletedByLabels(items, lsLabels, lsNotLabels)
 	}
 	if jsonOut {
 		if len(items) == 0 && scoped {
@@ -252,8 +257,8 @@ func runLsDone(cmd *cobra.Command) error {
 			out = append(out, jsonCompleted{
 				ID:          t.TaskID,
 				Content:     t.Content,
-				Project:     nilIfEmpty(res.ProjectName[t.ProjectID]),
-				Section:     nilIfEmpty(res.SectionName[t.SectionID]),
+				Project:     nilIfEmpty(projectName[t.ProjectID]),
+				Section:     nilIfEmpty(sectionName[t.SectionID]),
 				CompletedAt: t.CompletedAt,
 			})
 		}
@@ -296,7 +301,7 @@ func runLsDone(cmd *cobra.Command) error {
 	var order []string
 	for _, t := range items {
 		if _, ok := groupMap[t.ProjectID]; !ok {
-			name := res.ProjectName[t.ProjectID]
+			name := projectName[t.ProjectID]
 			if name == "" {
 				name = "(no project)"
 			}
@@ -320,74 +325,77 @@ func runLsDone(cmd *cobra.Command) error {
 	return nil
 }
 
-func filterCompletedByLabels(ctx context.Context, db *sql.DB, items []todoist.CompletedTask, include, exclude []string) ([]todoist.CompletedTask, error) {
-	if len(items) == 0 || (len(include) == 0 && len(exclude) == 0) {
-		return items, nil
-	}
-	ids := make([]any, len(items))
-	idPH := make([]string, len(items))
-	for i, t := range items {
-		ids[i] = t.TaskID
-		idPH[i] = "?"
-	}
-
-	var includeMatch, excludeMatch map[string]bool
-	var err error
-	if len(include) > 0 {
-		// among these items, the ones carrying ALL include labels
-		includeMatch, err = completedLabelSet(ctx, db, ids, idPH, include,
-			fmt.Sprintf(` GROUP BY task_id HAVING COUNT(DISTINCT label_name) = %d`, len(include)))
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(exclude) > 0 {
-		// the ones carrying ANY exclude label
-		excludeMatch, err = completedLabelSet(ctx, db, ids, idPH, exclude, "")
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	out := items[:0]
-	for _, t := range items {
-		if includeMatch != nil && !includeMatch[t.TaskID] {
-			continue
-		}
-		if excludeMatch != nil && excludeMatch[t.TaskID] {
-			continue
-		}
-		out = append(out, t)
-	}
-	return out, nil
+// completedUntil ends every completed-tasks query a little after now, so a
+// task completed a moment ago is not lost to clock skew with the server.
+func completedUntil() time.Time {
+	return time.Now().Add(time.Hour)
 }
 
-// completedLabelSet returns the task IDs (from the given item IDs) that match
-// the labels, with an optional trailing clause (e.g. a HAVING for AND logic).
-func completedLabelSet(ctx context.Context, db *sql.DB, ids []any, idPH []string, labels []string, trailing string) (map[string]bool, error) {
-	labelPH := make([]string, len(labels))
-	args := append([]any{}, ids...)
-	for i, l := range labels {
-		labelPH[i] = "?"
-		args = append(args, l)
-	}
-	q := fmt.Sprintf(
-		`SELECT task_id FROM task_labels WHERE task_id IN (%s) AND label_name IN (%s)%s`,
-		strings.Join(idPH, ","), strings.Join(labelPH, ","), trailing)
-	rows, err := db.QueryContext(ctx, q, args...)
+// cachedNames maps the IDs of a cached table (projects or sections) to names.
+func cachedNames(ctx context.Context, conn *sql.DB, table string) (map[string]string, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT id, name FROM `+table)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	set := map[string]bool{}
+	names := map[string]string{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
 			return nil, err
 		}
-		set[id] = true
+		names[id] = name
 	}
-	return set, rows.Err()
+	return names, rows.Err()
+}
+
+// validateCompletedLabels accepts a label that is known to the cache or
+// carried by one of the completed tasks: a shared label can live only on
+// completed tasks, which a sync does not cache.
+func validateCompletedLabels(ctx context.Context, conn *sql.DB, items []todoist.CompletedTask, names ...string) error {
+	onItems := map[string]bool{}
+	for _, t := range items {
+		for _, l := range t.Labels {
+			onItems[l] = true
+		}
+	}
+	var unknown []string
+	for _, n := range names {
+		if !onItems[n] {
+			unknown = append(unknown, n)
+		}
+	}
+	return validateLabels(ctx, conn, unknown...)
+}
+
+// filterCompletedByLabels keeps the tasks carrying every include label and
+// none of the exclude labels.
+func filterCompletedByLabels(items []todoist.CompletedTask, include, exclude []string) []todoist.CompletedTask {
+	var out []todoist.CompletedTask
+	for _, t := range items {
+		if containsAll(t.Labels, include) && !containsAny(t.Labels, exclude) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func containsAll(have, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(have, w) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAny(have, want []string) bool {
+	for _, w := range want {
+		if slices.Contains(have, w) {
+			return true
+		}
+	}
+	return false
 }
 
 var relativePeriod = regexp.MustCompile(`^([0-9]+)([a-z])$`)

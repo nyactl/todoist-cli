@@ -86,12 +86,10 @@ func TestLs_KnownLabelNoTasks_NotError(t *testing.T) {
 }
 
 func TestLsDone_NotLabel_Excludes(t *testing.T) {
-	items := `{"task_id":"tc1","content":"parked done","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
-		`{"task_id":"tc2","content":"real done","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
+	items := `{"id":"tc1","content":"parked done","project_id":"p1","labels":["someday"],"completed_at":"2026-08-12T09:00:00Z"},` +
+		`{"id":"tc2","content":"real done","project_id":"p1","labels":[],"completed_at":"2026-08-12T09:00:00Z"}`
 	env := newTestEnv(t, completedHandler(items))
 	hSeedProject(t, env.conn, "p1", "Work")
-	hSeedTask(t, env.conn, "tc1", "parked done", "p1", "")
-	env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES ('tc1','someday')`)
 	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
 		t.Fatalf("set context: %v", err)
 	}
