@@ -88,8 +88,8 @@ var overdueCmd = &cobra.Command{
 						fmt.Fprintf(out, "  ! %v\n", err)
 						continue
 					}
-					conn.ExecContext(ctx, `UPDATE tasks SET is_completed=1 WHERE id=?`, t.ID)
-					fmt.Fprintln(out, "  ✓ done")
+					next := markClosed(ctx, conn, client, t)
+					fmt.Fprintf(out, "  ✓ done%s\n", nextDueNote(next))
 					nDone++
 					acted = true
 

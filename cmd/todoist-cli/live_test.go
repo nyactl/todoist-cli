@@ -265,6 +265,18 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	}
 	mustRun(t, "done", child)
 
+	// Closing a recurring task moves it to its next date; it stays listed.
+	daily := strings.TrimSpace(mustRun(t, "add", "delta", "-D", "every day"))
+	if out := mustRun(t, "done", daily); !strings.Contains(out, "next: tomorrow") {
+		t.Errorf("done on a daily task should report the next date:\n%s", out)
+	}
+	if out := mustRun(t, "ls", "--ids"); !strings.Contains(out, daily) {
+		t.Errorf("daily task vanished from ls after done:\n%s", out)
+	}
+	if got := showTask(t, daily); got.Due == nil || got.Due.Date != time.Now().AddDate(0, 0, 1).Format("2006-01-02") {
+		t.Errorf("daily task should be due tomorrow after done: %+v", got.Due)
+	}
+
 	mustRun(t, "rm", other)
 	mustRun(t, "sync")
 	if out := mustRun(t, "ls", "--ids"); strings.Contains(out, other) {

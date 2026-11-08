@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/nyactl/todoist-cli/internal/config"
@@ -36,10 +38,31 @@ var doneCmd = &cobra.Command{
 		if err := client.CloseTask(ctx, t.ID); err != nil {
 			return err
 		}
-		conn.ExecContext(ctx, `UPDATE tasks SET is_completed=1 WHERE id=?`, t.ID)
-		fmt.Printf("done  %s  %s\n", shortID(ctx, t.ID), t.Content)
+		next := markClosed(ctx, conn, client, *t)
+		fmt.Printf("done  %s  %s%s\n", shortID(ctx, t.ID), t.Content, nextDueNote(next))
 		return nil
 	},
+}
+
+// markClosed mirrors a close into the cache and returns the next due date of
+// a recurring task. Closing a recurring task only moves its due date, so it is
+// fetched again instead of being marked complete (#47).
+func markClosed(ctx context.Context, conn *sql.DB, client *todoist.Client, t tasks.Task) *todoist.Due {
+	if t.DueRecurring {
+		if fresh, err := client.GetTask(ctx, t.ID); err == nil && !fresh.IsCompleted {
+			upsertTasks(ctx, conn, []todoist.Task{*fresh})
+			return fresh.Due
+		}
+	}
+	conn.ExecContext(ctx, `UPDATE tasks SET is_completed=1 WHERE id=?`, t.ID)
+	return nil
+}
+
+func nextDueNote(next *todoist.Due) string {
+	if next == nil {
+		return ""
+	}
+	return "  (next: " + formatDue(next.Date, next.Datetime) + ")"
 }
 
 func init() {
