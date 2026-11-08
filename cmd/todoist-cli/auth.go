@@ -11,6 +11,7 @@ import (
 	"github.com/nyactl/todoist-cli/internal/todoist"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var authCmd = &cobra.Command{
@@ -23,9 +24,10 @@ var authLoginCmd = &cobra.Command{
 	Short: "Save your Todoist API token to the system keychain",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Fprint(os.Stderr, "Todoist API token: ")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		token := strings.TrimSpace(scanner.Text())
+		token, err := readToken()
+		if err != nil {
+			return fmt.Errorf("read token: %w", err)
+		}
 		if token == "" {
 			return fmt.Errorf("token cannot be empty")
 		}
@@ -73,6 +75,26 @@ var authStatusCmd = &cobra.Command{
 		fmt.Fprintf(os.Stderr, "authenticated — %d projects\n", len(projects))
 		return nil
 	},
+}
+
+// stdinIsTerminal and readPassword are variables so tests can stand in for
+// a terminal.
+var (
+	stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	readPassword    = func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) }
+)
+
+// readToken reads the API token without echoing it on a terminal, and as a
+// plain line from piped input.
+func readToken() (string, error) {
+	if stdinIsTerminal() {
+		b, err := readPassword()
+		fmt.Fprintln(os.Stderr)
+		return strings.TrimSpace(string(b)), err
+	}
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	return strings.TrimSpace(scanner.Text()), scanner.Err()
 }
 
 func init() {
