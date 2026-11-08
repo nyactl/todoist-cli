@@ -543,11 +543,17 @@ func formatDue(date, datetime string) string {
 	}
 	today := time.Now().Format("2006-01-02")
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	clock := ""
+	if datetime != "" {
+		if c := todoist.LocalClock(datetime); c != "" {
+			clock = " " + c
+		}
+	}
 	switch {
 	case date == today:
-		return "today"
+		return "today" + clock
 	case date == tomorrow:
-		return "tomorrow"
+		return "tomorrow" + clock
 	case date < today:
 		t, err := time.Parse("2006-01-02", date)
 		if err != nil {
@@ -557,7 +563,7 @@ func formatDue(date, datetime string) string {
 		days := int(time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC).Sub(t).Hours() / 24)
 		return fmt.Sprintf("overdue %dd", days)
 	default:
-		return date
+		return date + clock
 	}
 }
 

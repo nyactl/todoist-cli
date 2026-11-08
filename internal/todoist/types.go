@@ -1,5 +1,10 @@
 package todoist
 
+import (
+	"encoding/json"
+	"time"
+)
+
 // Priority values as returned by the Todoist API.
 // Note: API priority 4 = p1 (urgent) in the Todoist UI; API 1 = p4 (normal).
 const (
@@ -27,12 +32,53 @@ type Task struct {
 	CommentCount int       `json:"comment_count"`
 }
 
+// Due is a task's due date. Date is always the local calendar day
+// (YYYY-MM-DD); Datetime carries the full value when the task is due at a
+// time of day, either floating ("2026-11-09T15:00:00") or fixed to a
+// timezone and expressed in UTC ("2026-11-09T14:00:00.000000Z").
 type Due struct {
 	Date        string `json:"date"`
 	Datetime    string `json:"datetime,omitempty"`
 	Timezone    string `json:"timezone,omitempty"`
 	IsRecurring bool   `json:"is_recurring"`
 	String      string `json:"string"`
+}
+
+// UnmarshalJSON splits the API's single "date" field, which holds the time
+// as well when there is one, into Date and Datetime.
+func (d *Due) UnmarshalJSON(b []byte) error {
+	type raw Due
+	var r raw
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*d = Due(r)
+	if d.Datetime == "" && len(d.Date) > len("2006-01-02") {
+		d.Datetime = d.Date
+		d.Date = LocalDate(d.Datetime)
+	}
+	return nil
+}
+
+// LocalDate returns the local calendar day of a due datetime. A floating
+// time is already local; a fixed-timezone time is in UTC and converted.
+func LocalDate(datetime string) string {
+	if t, err := time.Parse(time.RFC3339Nano, datetime); err == nil {
+		return t.Local().Format("2006-01-02")
+	}
+	return datetime[:len("2006-01-02")]
+}
+
+// LocalClock returns the local time of day (HH:MM) of a due datetime, or ""
+// when it cannot be parsed.
+func LocalClock(datetime string) string {
+	if t, err := time.Parse(time.RFC3339Nano, datetime); err == nil {
+		return t.Local().Format("15:04")
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05", datetime); err == nil {
+		return t.Format("15:04")
+	}
+	return ""
 }
 
 // Deadline is Todoist's hard-cutoff date, distinct from Due. Date-only.
