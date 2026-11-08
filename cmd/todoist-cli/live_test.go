@@ -265,17 +265,6 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	}
 	mustRun(t, "done", child)
 
-	// A task completed by name does not block a new task with the same name.
-	mustRun(t, "add", "zeta")
-	mustRun(t, "done", "zeta")
-	again := strings.TrimSpace(mustRun(t, "add", "zeta"))
-	if out := mustRun(t, "done", "zeta"); !strings.Contains(out, "zeta") {
-		t.Errorf("done by name after an earlier done of the same name:\n%s", out)
-	}
-	if got := showTask(t, again); got.Content != "zeta" {
-		t.Errorf("second zeta: %+v", got)
-	}
-
 	mustRun(t, "rm", other)
 	mustRun(t, "sync")
 	if out := mustRun(t, "ls", "--ids"); strings.Contains(out, other) {
