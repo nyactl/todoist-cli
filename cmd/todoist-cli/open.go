@@ -6,6 +6,7 @@ import (
 
 	"github.com/nyactl/todoist-cli/internal/config"
 	"github.com/nyactl/todoist-cli/internal/db"
+	"github.com/nyactl/todoist-cli/internal/state"
 	"github.com/nyactl/todoist-cli/internal/tasks"
 	"github.com/nyactl/todoist-cli/internal/todoist"
 
@@ -62,6 +63,9 @@ func completedTaskCompleter(cmd *cobra.Command, args []string, toComplete string
 	}
 	defer conn.Close()
 	st, _ := loadContext(ctx, conn)
+	if st == nil { // unreadable state: complete without a project scope
+		st = &state.State{}
+	}
 	client := todoist.New(token)
 	now := time.Now()
 	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())

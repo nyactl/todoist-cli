@@ -134,7 +134,7 @@ var overdueCmd = &cobra.Command{
 					if comments, err := client.GetComments(ctx, t.ID); err == nil && len(comments) > 0 {
 						fmt.Fprintln(out, "  comments")
 						for _, c := range comments {
-							fmt.Fprintf(out, "    %s  %s\n", c.PostedAt[:10], c.Content)
+							fmt.Fprintf(out, "    %s  %s\n", formatCommentTime(c.PostedAt), c.Content)
 						}
 					}
 					// acted stays false — reprompt for the same task
