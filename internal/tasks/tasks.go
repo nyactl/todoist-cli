@@ -227,6 +227,13 @@ func ProjectExists(ctx context.Context, db *sql.DB, projectID string) (bool, err
 	return n > 0, err
 }
 
+func ProjectName(ctx context.Context, db *sql.DB, projectID string) (string, error) {
+	var name string
+	err := db.QueryRowContext(ctx,
+		`SELECT name FROM projects WHERE id = ?`, projectID).Scan(&name)
+	return name, err
+}
+
 func SectionByName(ctx context.Context, db *sql.DB, name, projectID string) (id string, err error) {
 	err = db.QueryRowContext(ctx,
 		`SELECT id FROM sections WHERE name = ? AND project_id = ?`, name, projectID).Scan(&id)
