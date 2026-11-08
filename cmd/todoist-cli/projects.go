@@ -118,8 +118,8 @@ var projectsRmCmd = &cobra.Command{
 				)
 				SELECT
 					(SELECT COUNT(*) FROM projects WHERE parent_id = ?),
-					(SELECT COUNT(*) FROM tasks WHERE project_id = ?),
-					(SELECT COUNT(*) FROM tasks WHERE project_id IN (SELECT id FROM subtree))`,
+					(SELECT COUNT(*) FROM tasks WHERE is_completed = 0 AND project_id = ?),
+					(SELECT COUNT(*) FROM tasks WHERE is_completed = 0 AND project_id IN (SELECT id FROM subtree))`,
 				projectID, projectID, projectID).Scan(&subprojects, &directTasks, &subtreeTasks)
 			if err != nil {
 				return err

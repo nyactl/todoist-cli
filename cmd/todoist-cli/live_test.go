@@ -275,6 +275,12 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	mustRun(t, "projects", "add", sub, "--parent", project)
 	mustRun(t, "projects", "mv", sub, sub+"-moved")
 	mustRun(t, "projects", "rm", sub+"-moved")
+
+	// A project whose last task was completed through the CLI counts as empty.
+	emptied := liveName("emptied")
+	mustRun(t, "projects", "add", emptied)
+	mustRun(t, "done", strings.TrimSpace(mustRun(t, "add", "omega", "-p", emptied)))
+	mustRun(t, "projects", "rm", emptied)
 	stats := decodeJSON[map[string]any](t, mustRun(t, "stats", "--json"))
 	if stats["done_today"] == nil || stats["done_today"].(float64) < 1 {
 		t.Errorf("stats --json done_today: %v", stats)
