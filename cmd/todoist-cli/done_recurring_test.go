@@ -76,3 +76,60 @@ func TestOverdue_DoneOnRecurringTaskStaysActive(t *testing.T) {
 	}
 	assertStillActive(t, env)
 }
+
+func taskState(t *testing.T, env *testEnv, id string) (completed int) {
+	t.Helper()
+	if err := env.conn.QueryRowContext(context.Background(),
+		`SELECT is_completed FROM tasks WHERE id = ?`, id).Scan(&completed); err != nil {
+		t.Fatal(err)
+	}
+	return completed
+}
+
+// The last occurrence of a recurring task really completes it.
+func TestDone_RecurringLastOccurrenceIsCompleted(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/close") {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, todoist.Task{ID: "rec00001", Content: "Water plants", ProjectID: "p1", Priority: 1, IsCompleted: true,
+			Due: &todoist.Due{Date: "2026-11-01", String: "every day until nov 1", IsRecurring: true}})
+	})
+	env := newTestEnv(t, mux)
+	seedRecurring(t, env)
+
+	out, err := runCmd(t, "done", "rec00001")
+	if err != nil {
+		t.Fatalf("done: %v", err)
+	}
+	if taskState(t, env, "rec00001") != 1 {
+		t.Error("a recurring task whose series ended must be marked complete")
+	}
+	if strings.Contains(out, "next:") {
+		t.Errorf("no next date after the last occurrence:\n%s", out)
+	}
+}
+
+// A one-off task is marked complete without fetching it again.
+func TestDone_OneOffTaskSkipsRefetch(t *testing.T) {
+	var gets int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			gets++
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Home")
+	hSeedTask(t, env.conn, "one00001", "Buy milk", "p1", "")
+
+	if _, err := runCmd(t, "done", "one00001"); err != nil {
+		t.Fatalf("done: %v", err)
+	}
+	if taskState(t, env, "one00001") != 1 || gets != 0 {
+		t.Errorf("one-off task: is_completed=%d, GET calls=%d; want 1 and 0", taskState(t, env, "one00001"), gets)
+	}
+}
