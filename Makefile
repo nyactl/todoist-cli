@@ -21,7 +21,8 @@ vet:
 	go vet ./...
 
 cover:
-	go test ./... -coverpkg=./... -coverprofile=$(COV_OUT) -covermode=atomic
+	# -count=1: cached -coverpkg results restored in CI skewed the total.
+	go test -count=1 ./... -coverpkg=./... -coverprofile=$(COV_OUT) -covermode=atomic
 	@go tool cover -func=$(COV_OUT) | tail -1
 	@total=$$(go tool cover -func=$(COV_OUT) | tail -1 | awk '{print $$3}' | tr -d '%'); \
 	 echo "Coverage: $${total}% (minimum: $(COV_MIN)%)"; \
