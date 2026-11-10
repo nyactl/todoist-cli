@@ -105,8 +105,8 @@ var statsCmd = &cobra.Command{
 			sinceWeek := startOfDay(time.Now().AddDate(0, 0, -7))
 
 			doneToday, doneWeekCount := 0, 0
-			if res, err := client.GetCompletedSince(ctx, sinceWeek, projectFilter); err == nil {
-				for _, t := range res.Tasks {
+			if items, err := client.GetCompleted(ctx, sinceWeek, completedUntil(), projectFilter); err == nil {
+				for _, t := range items {
 					doneWeekCount++
 					if t.CompletedAt >= sinceDay.Format(time.RFC3339)[:10] {
 						doneToday++

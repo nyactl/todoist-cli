@@ -178,16 +178,13 @@ type CreateTaskRequest struct {
 	Order        int      `json:"order,omitempty"`
 }
 
+// CompletedTask is a task as the completed-tasks endpoint returns it.
 type CompletedTask struct {
-	TaskID      string `json:"task_id"`
-	Content     string `json:"content"`
-	ProjectID   string `json:"project_id"`
-	SectionID   string `json:"section_id"`
-	CompletedAt string `json:"completed_at"`
-}
-
-type CompletedResult struct {
-	Tasks       []CompletedTask
-	ProjectName map[string]string
-	SectionName map[string]string
+	TaskID      string   `json:"id"`
+	Content     string   `json:"content"`
+	ProjectID   string   `json:"project_id"`
+	SectionID   string   `json:"section_id"`
+	ParentID    string   `json:"parent_id"`
+	Labels      []string `json:"labels"`
+	CompletedAt string   `json:"completed_at"`
 }

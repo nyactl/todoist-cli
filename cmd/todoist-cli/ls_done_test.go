@@ -12,7 +12,7 @@ import (
 // (empty string for no completions).
 func completedHandler(itemJSON string) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"items":[` + itemJSON + `],"projects":{},"sections":{}}`))
 	})
@@ -59,7 +59,7 @@ func TestLsDone_EmptyNoContext_PlainMessage(t *testing.T) {
 func TestLsDone_Global_IgnoresContext(t *testing.T) {
 	var gotProjectID string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		gotProjectID = r.URL.Query().Get("project_id")
 		w.Write([]byte(`{"items":[],"projects":{},"sections":{}}`))
 	})
@@ -83,7 +83,7 @@ func TestLsDone_Global_IgnoresContext(t *testing.T) {
 }
 
 func TestLsDone_WithResults_ListsTasksNoHint(t *testing.T) {
-	item := `{"task_id":"tc1","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
+	item := `{"id":"tc1","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
 	env := newTestEnv(t, completedHandler(item))
 	hSeedProject(t, env.conn, "p1", "Work")
 	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
@@ -103,9 +103,9 @@ func TestLsDone_WithResults_ListsTasksNoHint(t *testing.T) {
 }
 
 func TestLsDone_ShortIDsAreUniqueAndAligned(t *testing.T) {
-	items := `{"task_id":"6hmR8gX2qqHf9vPc","content":"Record demo","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
-		`{"task_id":"6hmR8gXcRw4pJ6mf","content":"Add topics","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
-		`{"task_id":"zz990000","content":"Other","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
+	items := `{"id":"6hmR8gX2qqHf9vPc","content":"Record demo","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
+		`{"id":"6hmR8gXcRw4pJ6mf","content":"Add topics","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
+		`{"id":"zz990000","content":"Other","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
 	env := newTestEnv(t, completedHandler(items))
 	hSeedProject(t, env.conn, "p1", "Work")
 	if err := state.Save(&state.State{ProjectID: "p1", ProjectName: "Work"}); err != nil {
@@ -125,19 +125,21 @@ func TestLsDone_ShortIDsAreUniqueAndAligned(t *testing.T) {
 
 func completedTwoProjects() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"items":[` +
-			`{"task_id":"c1","content":"Ship release","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"},` +
-			`{"task_id":"c2","content":"Mow lawn","project_id":"p2","completed_at":"2026-08-12T10:00:00Z"},` +
-			`{"task_id":"c3","content":"Orphan","project_id":"gone","completed_at":"2026-08-12T11:00:00Z"}` +
-			`],"projects":{"p1":{"name":"Work"},"p2":{"name":"Home"}},"sections":{}}`))
+			`{"id":"c1","content":"Ship release","project_id":"p1","labels":["release","work"],"completed_at":"2026-08-12T09:00:00Z"},` +
+			`{"id":"c2","content":"Mow lawn","project_id":"p2","labels":["work"],"completed_at":"2026-08-12T10:00:00Z"},` +
+			`{"id":"c3","content":"Orphan","project_id":"gone","labels":[],"completed_at":"2026-08-12T11:00:00Z"}` +
+			`],"next_cursor":null}`))
 	})
 	return mux
 }
 
 func TestLsDone_NoContext_GroupsByProject(t *testing.T) {
-	newTestEnv(t, completedTwoProjects())
+	env := newTestEnv(t, completedTwoProjects())
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedProject(t, env.conn, "p2", "Home")
 	out, err := runCmd(t, "ls", "--done", "week")
 	if err != nil {
 		t.Fatal(err)
@@ -152,11 +154,7 @@ func TestLsDone_NoContext_GroupsByProject(t *testing.T) {
 }
 
 func TestLsDone_LabelFilters(t *testing.T) {
-	env := newTestEnv(t, completedTwoProjects())
-	for _, row := range [][2]string{{"c1", "release"}, {"c1", "work"}, {"c2", "work"}} {
-		env.conn.Exec(`INSERT INTO tasks (id, content, is_completed) VALUES (?, 'x', 1) ON CONFLICT DO NOTHING`, row[0])
-		env.conn.Exec(`INSERT INTO task_labels (task_id, label_name) VALUES (?, ?)`, row[0], row[1])
-	}
+	newTestEnv(t, completedTwoProjects())
 
 	out, err := runCmd(t, "ls", "--done", "week", "-l", "work", "-l", "release")
 	if err != nil {
@@ -177,7 +175,7 @@ func TestLsDone_LabelFilters(t *testing.T) {
 
 func TestLsDone_APIErrorIsReturned(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 	})
 	newTestEnv(t, mux)

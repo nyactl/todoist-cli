@@ -203,9 +203,9 @@ func TestLs_Project_Empty_NoContextHint(t *testing.T) {
 func TestLsDone_Project_ScopesAPICall(t *testing.T) {
 	var gotProjectID string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
 		gotProjectID = r.URL.Query().Get("project_id")
-		w.Write([]byte(`{"items":[],"projects":{},"sections":{}}`))
+		w.Write([]byte(`{"items":[],"next_cursor":null}`))
 	})
 	env := newTestEnv(t, mux)
 	seedTwoProjects(t, env)

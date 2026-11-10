@@ -72,7 +72,7 @@ func TestSearch_NoIDs_OmitsID(t *testing.T) {
 	}
 }
 
-const completedIDItem = `{"task_id":"6hFmC3GH2PgP6pPX","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
+const completedIDItem = `{"id":"6hFmC3GH2PgP6pPX","content":"finished thing","project_id":"p1","completed_at":"2026-08-12T09:00:00Z"}`
 
 func TestLsDone_IDs_ShowsFullID(t *testing.T) {
 	env := newTestEnv(t, completedHandler(completedIDItem))

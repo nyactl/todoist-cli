@@ -65,12 +65,12 @@ func completedTaskCompleter(cmd *cobra.Command, args []string, toComplete string
 	client := todoist.New(token)
 	now := time.Now()
 	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	res, err := client.GetCompletedSince(ctx, since, st.ProjectID)
+	items, err := client.GetCompleted(ctx, since, completedUntil(), st.ProjectID)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
-	completions := make([]string, len(res.Tasks))
-	for i, t := range res.Tasks {
+	completions := make([]string, len(items))
+	for i, t := range items {
 		completions[i] = t.TaskID + "\t" + t.Content
 	}
 	return completions, cobra.ShellCompDirectiveNoFileComp

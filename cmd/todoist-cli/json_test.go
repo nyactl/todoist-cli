@@ -138,11 +138,13 @@ func TestJSON_Search_IncludesSubtaskWithParent(t *testing.T) {
 
 func TestJSON_LsDone(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/tasks/completed", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"task_id":"9Lh0XSZzryx78XS9","content":"Ship it","project_id":"p1","section_id":"s1","completed_at":"2026-10-18T08:00:00.000000Z"}],
-			"projects":{"p1":{"name":"Work"}},"sections":{"s1":{"name":"Doing"}}}`))
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"items":[{"id":"9Lh0XSZzryx78XS9","content":"Ship it","project_id":"p1","section_id":"s1","completed_at":"2026-10-18T08:00:00.000000Z"}],
+			"next_cursor":null}`))
 	})
-	newTestEnv(t, mux)
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+	hSeedSection(t, env.conn, "s1", "Doing", "p1", 0)
 
 	type completed struct {
 		ID          string  `json:"id"`
@@ -247,7 +249,7 @@ func TestJSON_Comments_FullContentAndAuthor(t *testing.T) {
 }
 
 func TestJSON_Stats(t *testing.T) {
-	env := newTestEnv(t, completedHandler(`{"task_id":"x","content":"Done","project_id":"p1","completed_at":"2000-01-01T00:00:00Z"}`))
+	env := newTestEnv(t, completedHandler(`{"id":"x","content":"Done","project_id":"p1","completed_at":"2000-01-01T00:00:00Z"}`))
 	hSeedProject(t, env.conn, "p1", "Work")
 	env.conn.ExecContext(context.Background(),
 		`INSERT INTO tasks (id, content, project_id, due_date) VALUES ('t1', 'Late', 'p1', date('now', 'localtime', '-2 day'))`)
