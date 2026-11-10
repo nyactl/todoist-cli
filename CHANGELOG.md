@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0] - 2026-11-09
+
+### Features
+
+- Ls -p <project> lists one project without changing the active context (#41) (#58)
+
+
 ## [1.27.2] - 2026-10-18
 
 ### Bug Fixes
