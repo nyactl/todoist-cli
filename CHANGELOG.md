@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.29.0] - 2026-11-10
+
+### Bug Fixes
+
+- List tasks due at a time of day under today and show the time (#55)
+- Drop projects, labels and sections the API no longer returns on sync (#56)
+- Read API v1 field names for completion, creation time, order and url (#44) (#57)
+- Read completed tasks from the documented endpoint with paging and their own labels (#59)
+- Count done today from the start of the local day in stats (#46) (#60)
+- Keep recurring tasks listed with their next date after done (#61)
+- Read the token without echo in auth login on a terminal (#48) (#62)
+- Keep the new due date in the cache after rescheduling in overdue (#63)
+- Store the project name when cd is given a project ID (#51) (#64)
+- Match task names against active tasks only (#65)
+- Let projects rm count only active tasks as content (#53) (#66)
+- Avoid panics in open completion and overdue comment details (#54) (#67)
+
+### CI
+
+- Run the coverage gate without cached test results (#68)
+
+
 ## [1.28.0] - 2026-11-09
 
 ### Features
