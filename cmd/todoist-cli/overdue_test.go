@@ -448,7 +448,7 @@ func TestOverdue_ViewAction_ShowsComments(t *testing.T) {
 	if !strings.Contains(out, "Blocked on deploy window") {
 		t.Errorf("expected second comment in v output, got: %q", out)
 	}
-	if !strings.Contains(out, "2026-06-01") {
+	if !strings.Contains(out, formatCommentTime("2026-06-01T10:00:00Z")) {
 		t.Errorf("expected comment date in v output, got: %q", out)
 	}
 }
