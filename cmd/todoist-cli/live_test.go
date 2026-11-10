@@ -201,10 +201,15 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	parent := strings.TrimSpace(out)
 	child := strings.TrimSpace(mustRun(t, "add", "alpha child", "--parent", parent))
 	other := strings.TrimSpace(mustRun(t, "add", "beta"))
+	timed := strings.TrimSpace(mustRun(t, "add", "gamma", "-D", "tomorrow at 15:00"))
 	mustRun(t, "sync")
 
-	if out := mustRun(t, "ls", "--ids"); !strings.Contains(out, parent) || !strings.Contains(out, other) {
+	out = mustRun(t, "ls", "--ids")
+	if !strings.Contains(out, parent) || !strings.Contains(out, other) {
 		t.Errorf("ls --ids missing tasks:\n%s", out)
+	}
+	if !strings.Contains(out, "15:00") {
+		t.Errorf("ls should show the due time of the timed task:\n%s", out)
 	}
 	if out := mustRun(t, "search", "-i", "alpha child"); !strings.Contains(out, child) {
 		t.Errorf("search missing subtask:\n%s", out)
@@ -214,6 +219,11 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	if i := slices.IndexFunc(listed, func(j jsonTask) bool { return j.ID == parent }); i < 0 ||
 		!deadlineIs(listed[i].Deadline, deadline) || !slices.Contains(listed[i].Labels, label) {
 		t.Errorf("ls --json after sync: %+v", listed)
+	}
+	if i := slices.IndexFunc(listed, func(j jsonTask) bool { return j.ID == timed }); i < 0 || listed[i].Due == nil ||
+		listed[i].Due.Datetime == nil || !strings.HasSuffix(*listed[i].Due.Datetime, "T15:00:00") ||
+		len(listed[i].Due.Date) != 10 {
+		t.Errorf("timed task should have a date-only due.date and a due.datetime: %+v", listed)
 	}
 	if sections := decodeJSON[[]map[string]string](t, mustRun(t, "sections", "--json")); len(sections) != 2 {
 		t.Errorf("sections --json: %v", sections)
