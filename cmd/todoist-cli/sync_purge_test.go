@@ -118,3 +118,33 @@ func TestSync_RemovesEverythingWhenAPIIsEmpty(t *testing.T) {
 		}
 	}
 }
+
+// A task can still name a section the same sync no longer lists (the two are
+// fetched in parallel, so one can see a change the other missed). The task is
+// kept without its section instead of failing the whole sync.
+func TestSync_TaskInVanishedSectionKeepsSyncing(t *testing.T) {
+	var calls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/labels", pageResponse([]todoist.Label{}))
+	mux.HandleFunc("/projects", pageResponse([]todoist.Project{{ID: "p1", Name: "Work"}}))
+	mux.HandleFunc("/sections", func(w http.ResponseWriter, r *http.Request) {
+		items := []todoist.Section{{ID: "s1", Name: "Todo", ProjectID: "p1"}}
+		if calls.Load() > 0 {
+			items = nil
+		}
+		writeJSON(w, apiPage[todoist.Section]{Results: items})
+	})
+	mux.HandleFunc("/tasks", pageResponse([]todoist.Task{{ID: "t1", Content: "Stay", ProjectID: "p1", SectionID: "s1", Priority: 1}}))
+	env := newTestEnv(t, mux)
+
+	if _, err := runCmd(t, "sync"); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	calls.Add(1)
+	if _, err := runCmd(t, "sync"); err != nil {
+		t.Fatalf("second sync must not fail on the vanished section: %v", err)
+	}
+	if n := countRows(t, env, `SELECT COUNT(*) FROM tasks WHERE id = 't1' AND section_id IS NULL`); n != 1 {
+		t.Errorf("task should be kept without its section")
+	}
+}

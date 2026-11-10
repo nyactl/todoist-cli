@@ -300,6 +300,9 @@ func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section, pro
 	return len(items), tx.Commit()
 }
 
+// Task writes resolve section_id through the cache: a section the same sync
+// no longer lists (fetched in parallel, so it can see a later state than the
+// tasks) becomes NULL instead of failing the foreign key and the whole sync.
 func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID string) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -360,7 +363,7 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			   priority,ord,is_completed,
 			   due_date,due_datetime,due_string,due_is_recurring,due_timezone,
 			   deadline_date,url,comment_count,created_at)
-			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
+			 VALUES(?,?,?,nullif(?,?),(SELECT id FROM sections WHERE id = ?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   content=excluded.content, description=excluded.description,
 			   project_id=excluded.project_id, section_id=excluded.section_id,
@@ -371,7 +374,7 @@ func writeTasks(ctx context.Context, db *sql.DB, items []todoist.Task, projectID
 			   due_timezone=excluded.due_timezone, deadline_date=excluded.deadline_date,
 			   url=excluded.url, comment_count=excluded.comment_count`,
 			t.ID, t.Content, t.Description,
-			t.ProjectID, "", t.SectionID, "", t.ParentID, "",
+			t.ProjectID, "", t.SectionID, t.ParentID, "",
 			t.Priority, t.Order, boolToInt(t.IsCompleted),
 			dueDate, dueDatetime, dueString, dueRecurring, dueTZ,
 			deadline, t.URL, t.CommentCount, t.CreatedAt)
@@ -426,7 +429,7 @@ func upsertTasks(ctx context.Context, db *sql.DB, items []todoist.Task) {
 			   priority,ord,is_completed,
 			   due_date,due_datetime,due_string,due_is_recurring,due_timezone,
 			   deadline_date,url,comment_count,created_at)
-			 VALUES(?,?,?,nullif(?,?),nullif(?,?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
+			 VALUES(?,?,?,nullif(?,?),(SELECT id FROM sections WHERE id = ?),nullif(?,?),?,?,?,?,?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   content=excluded.content, description=excluded.description,
 			   project_id=excluded.project_id, section_id=excluded.section_id,
@@ -437,7 +440,7 @@ func upsertTasks(ctx context.Context, db *sql.DB, items []todoist.Task) {
 			   due_timezone=excluded.due_timezone, deadline_date=excluded.deadline_date,
 			   url=excluded.url, comment_count=excluded.comment_count`,
 			t.ID, t.Content, t.Description,
-			t.ProjectID, "", t.SectionID, "", t.ParentID, "",
+			t.ProjectID, "", t.SectionID, t.ParentID, "",
 			t.Priority, t.Order, boolToInt(t.IsCompleted),
 			dueDate, dueDatetime, dueString, dueRecurring, dueTZ,
 			deadline, t.URL, t.CommentCount, t.CreatedAt)
