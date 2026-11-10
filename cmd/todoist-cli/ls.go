@@ -28,7 +28,51 @@ var (
 	lsPriority  int
 	lsRecursive bool
 	lsGlobal    bool
+	lsProject   string
 )
+
+// lsScope is the project one ls invocation is limited to: the -p project, or
+// the active cd context unless --global drops it.
+type lsScope struct {
+	projectID   string
+	projectName string
+	explicit    bool // from -p rather than the stored context
+}
+
+func (s lsScope) scoped() bool { return s.projectID != "" }
+
+// note explains an empty scoped result. Only a cd context gets the hint on
+// how to clear it; -p lasts for this call alone.
+func (s lsScope) note() string {
+	if s.explicit {
+		return fmt.Sprintf("in %q", s.projectName)
+	}
+	return contextScopeNote(s.projectName)
+}
+
+// resolveLsScope never writes the stored context for -p, so scripts can look
+// at one project without saving and restoring their cd state (issue #41).
+func resolveLsScope(ctx context.Context, conn *sql.DB) (lsScope, error) {
+	if lsProject != "" {
+		id, err := tasks.ProjectByName(ctx, conn, lsProject)
+		if err != nil {
+			return lsScope{}, err
+		}
+		name, err := tasks.ProjectName(ctx, conn, id)
+		if err != nil {
+			return lsScope{}, err
+		}
+		return lsScope{projectID: id, projectName: name, explicit: true}, nil
+	}
+	st, err := loadContext(ctx, conn)
+	if err != nil {
+		return lsScope{}, err
+	}
+	if !st.HasProject() || lsGlobal {
+		return lsScope{}, nil
+	}
+	return lsScope{projectID: st.ProjectID, projectName: st.ProjectName}, nil
+}
 
 // contextScopeNote explains that an empty (or partial) result came from the
 // active project context and how to widen the search — so a context-scoped
@@ -76,9 +120,16 @@ name (including unsupported negation like -l '!x') is reported as an error.
 -g/--global ignores the active project context for this one invocation, so label,
 priority and --done queries run account-wide without changing your cd context.
 
+-p/--project <name|id> lists that project for this one invocation as if it were
+the active context, without changing your cd context. It composes with the other
+flags and cannot be combined with --global.
+
 Use --done [period] to review completed tasks (live API call).
 Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if lsGlobal && lsProject != "" {
+			return fmt.Errorf("--global and --project cannot be combined")
+		}
 		if lsDone != "" {
 			return runLsDone(cmd)
 		}
@@ -103,33 +154,27 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		defer conn.Close()
 
 		ctx := cmd.Context()
-		st, err := loadContext(ctx, conn)
+		sc, err := resolveLsScope(ctx, conn)
 		if err != nil {
 			return err
 		}
-		// scoped is true only when a context is active and not overridden by
-		// --global; every context-sensitive branch below keys off it.
-		scoped := st.HasProject() && !lsGlobal
+		scoped := sc.scoped()
 
 		if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
 			if err := validateLabels(ctx, conn, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
 				return err
 			}
-			projectID := ""
-			if scoped {
-				projectID = st.ProjectID
-			}
-			ts, err := tasks.ByLabelFilter(ctx, conn, lsLabels, lsNotLabels, projectID)
+			ts, err := tasks.ByLabelFilter(ctx, conn, lsLabels, lsNotLabels, sc.projectID)
 			if err != nil {
 				return err
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
 			if jsonOut {
-				return emitListJSON(ctx, conn, ts, scoped, st.ProjectName)
+				return emitListJSON(ctx, conn, ts, sc)
 			}
 			if len(ts) == 0 {
 				if scoped {
-					fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
+					fmt.Printf("no tasks %s\n", sc.note())
 				} else {
 					fmt.Println("no tasks")
 				}
@@ -142,19 +187,19 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 		if scoped {
 			var ts []tasks.Task
 			if lsRecursive {
-				ts, err = tasks.BySubtree(ctx, conn, st.ProjectID)
+				ts, err = tasks.BySubtree(ctx, conn, sc.projectID)
 			} else {
-				ts, err = tasks.ByProject(ctx, conn, st.ProjectID)
+				ts, err = tasks.ByProject(ctx, conn, sc.projectID)
 			}
 			if err != nil {
 				return err
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
 			if jsonOut {
-				return emitListJSON(ctx, conn, ts, true, st.ProjectName)
+				return emitListJSON(ctx, conn, ts, sc)
 			}
 			if len(ts) == 0 {
-				fmt.Printf("no tasks %s\n", contextScopeNote(st.ProjectName))
+				fmt.Printf("no tasks %s\n", sc.note())
 				return nil
 			}
 			switch {
@@ -174,7 +219,7 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 			}
 			ts = filterTasksByPriority(ts, lsPriority)
 			if jsonOut {
-				return emitListJSON(ctx, conn, ts, false, "")
+				return emitListJSON(ctx, conn, ts, lsScope{})
 			}
 			if len(ts) == 0 {
 				fmt.Println("nothing due")
@@ -188,9 +233,9 @@ Period: today, week, month, year, Nd/Nw/Nm (e.g. 7d, 2w, 3m). Defaults to today.
 
 // emitListJSON prints ts as a JSON array. The context hint the text view
 // prints for an empty scoped result goes to stderr so stdout stays valid JSON.
-func emitListJSON(ctx context.Context, conn *sql.DB, ts []tasks.Task, scoped bool, projectName string) error {
-	if len(ts) == 0 && scoped {
-		fmt.Fprintf(os.Stderr, "no tasks %s\n", contextScopeNote(projectName))
+func emitListJSON(ctx context.Context, conn *sql.DB, ts []tasks.Task, sc lsScope) error {
+	if len(ts) == 0 && sc.scoped() {
+		fmt.Fprintf(os.Stderr, "no tasks %s\n", sc.note())
 	}
 	return emitTasksJSON(ctx, conn, ts)
 }
@@ -207,21 +252,17 @@ func runLsDone(cmd *cobra.Command) error {
 	}
 	defer conn.Close()
 
-	st, err := loadContext(ctx, conn)
+	sc, err := resolveLsScope(ctx, conn)
 	if err != nil {
 		return err
 	}
+	scoped := sc.scoped()
 	token, err := config.GetToken()
 	if err != nil {
 		return err
 	}
 	client := todoist.New(token)
-	scoped := st.HasProject() && !lsGlobal
-	projectID := ""
-	if scoped {
-		projectID = st.ProjectID
-	}
-	res, err := client.GetCompletedSince(ctx, since, projectID)
+	res, err := client.GetCompletedSince(ctx, since, sc.projectID)
 	if err != nil {
 		return fmt.Errorf("fetch completed: %w", err)
 	}
@@ -238,7 +279,7 @@ func runLsDone(cmd *cobra.Command) error {
 	}
 	if jsonOut {
 		if len(items) == 0 && scoped {
-			fmt.Fprintf(os.Stderr, "nothing completed %s\n", contextScopeNote(st.ProjectName))
+			fmt.Fprintf(os.Stderr, "nothing completed %s\n", sc.note())
 		}
 		type jsonCompleted struct {
 			ID          string  `json:"id"`
@@ -264,7 +305,7 @@ func runLsDone(cmd *cobra.Command) error {
 		// cue, an empty result reads as "completed tasks are broken" when really
 		// the context just has none (issue #16).
 		if scoped {
-			fmt.Printf("nothing completed %s\n", contextScopeNote(st.ProjectName))
+			fmt.Printf("nothing completed %s\n", sc.note())
 		} else {
 			fmt.Println("nothing completed")
 		}
@@ -751,8 +792,10 @@ func init() {
 	lsCmd.Flags().BoolVarP(&showIDs, "ids", "i", false, "prepend the full task ID to each line (for scripting)")
 	lsCmd.Flags().BoolVar(&jsonOut, "json", false, "print tasks as a JSON array (ignores --board and --ids)")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "ignore the active project context; search all projects")
+	lsCmd.Flags().StringVarP(&lsProject, "project", "p", "", "list this project (name or ID) without changing the active context")
 	lsCmd.RegisterFlagCompletionFunc("done", periodCompleter)
 	lsCmd.RegisterFlagCompletionFunc("label", labelCompleter)
 	lsCmd.RegisterFlagCompletionFunc("not-label", labelCompleter)
+	lsCmd.RegisterFlagCompletionFunc("project", projectCompleter)
 	root.AddCommand(lsCmd)
 }
