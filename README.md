@@ -108,6 +108,7 @@ export TODOIST_TOKEN=your_token_here
 | `ls --not-label <label>` | Exclude tasks carrying a label (repeatable); composes with `-l`. Unknown labels error |
 | `ls -P <1-4>` | Filter by priority (1=normal, 4=urgent) |
 | `ls -g` / `ls --global` | Ignore the active project context for this run — search all projects (applies to `-l`, `-P`, `--done`) |
+| `ls -p <project>` | List one project (name or ID) for this run without changing the active context; composes with the other `ls` flags, not with `-g` |
 | `add <content>` | Create a task in the active project |
 | `add -D <due>` | Natural language due date — e.g. `"tomorrow"`, `"every monday"` |
 | `add --deadline <date>` | Set a deadline (strict `YYYY-MM-DD`, e.g. `2026-09-30`) |
