@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/nyactl/todoist-cli/internal/todoist"
 )
 
 func TestCp_CopiesURL(t *testing.T) {
@@ -60,7 +62,7 @@ func TestCp_URLContainsTaskID(t *testing.T) {
 		t.Fatalf("ByID: %v", err)
 	}
 	want := "https://app.todoist.com/app/task/6WvQ4gWpvvCG8f35"
-	if got := taskURL(task.ID); got != want {
+	if got := todoist.TaskURL(task.ID); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

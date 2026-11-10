@@ -15,21 +15,41 @@ const (
 )
 
 type Task struct {
-	ID           string    `json:"id"`
-	Content      string    `json:"content"`
-	Description  string    `json:"description"`
-	IsCompleted  bool      `json:"is_completed"`
-	Priority     int       `json:"priority"`
-	ProjectID    string    `json:"project_id"`
-	SectionID    string    `json:"section_id"`
-	ParentID     string    `json:"parent_id"`
-	Labels       []string  `json:"labels"`
-	Due          *Due      `json:"due"`
-	Deadline     *Deadline `json:"deadline"`
-	Order        int       `json:"order"`
-	CreatedAt    string    `json:"created_at"`
-	URL          string    `json:"url"`
-	CommentCount int       `json:"comment_count"`
+	ID          string    `json:"id"`
+	Content     string    `json:"content"`
+	Description string    `json:"description"`
+	IsCompleted bool      `json:"checked"`
+	Priority    int       `json:"priority"`
+	ProjectID   string    `json:"project_id"`
+	SectionID   string    `json:"section_id"`
+	ParentID    string    `json:"parent_id"`
+	Labels      []string  `json:"labels"`
+	Due         *Due      `json:"due"`
+	Deadline    *Deadline `json:"deadline"`
+	Order       int       `json:"child_order"`
+	CreatedAt   string    `json:"added_at"`
+	// URL is not part of the API object; it is derived from the ID on decode.
+	URL          string `json:"url,omitempty"`
+	CommentCount int    `json:"note_count"`
+}
+
+// UnmarshalJSON fills URL, which the API does not send, from the task ID.
+func (t *Task) UnmarshalJSON(b []byte) error {
+	type raw Task
+	var r raw
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*t = Task(r)
+	if t.URL == "" && t.ID != "" {
+		t.URL = TaskURL(t.ID)
+	}
+	return nil
+}
+
+// TaskURL is the task's address in the Todoist web app.
+func TaskURL(id string) string {
+	return "https://app.todoist.com/app/task/" + id
 }
 
 // Due is a task's due date. Date is always the local calendar day
@@ -91,7 +111,7 @@ type Project struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Color      string `json:"color"`
-	Order      int    `json:"order"`
+	Order      int    `json:"child_order"`
 	ParentID   string `json:"parent_id"`
 	IsFavorite bool   `json:"is_favorite"`
 	IsArchived bool   `json:"is_archived"`
@@ -110,7 +130,7 @@ type Section struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	ProjectID  string `json:"project_id"`
-	Order      int    `json:"order"`
+	Order      int    `json:"section_order"`
 	IsArchived bool   `json:"is_archived"`
 }
 

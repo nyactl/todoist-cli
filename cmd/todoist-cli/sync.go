@@ -286,13 +286,13 @@ func writeSections(ctx context.Context, db *sql.DB, items []todoist.Section, pro
 		return 0, err
 	}
 
-	for i, s := range items {
+	for _, s := range items {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO sections(id,name,project_id,ord,is_archived) VALUES(?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   name=excluded.name, project_id=excluded.project_id,
 			   ord=excluded.ord, is_archived=excluded.is_archived`,
-			s.ID, s.Name, s.ProjectID, i, boolToInt(s.IsArchived))
+			s.ID, s.Name, s.ProjectID, s.Order, boolToInt(s.IsArchived))
 		if err != nil {
 			return 0, err
 		}

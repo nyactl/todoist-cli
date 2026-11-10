@@ -144,8 +144,10 @@ type liveTask struct {
 	Due         *struct {
 		Date string `json:"date"`
 	} `json:"due"`
-	Deadline *string `json:"deadline"`
-	Subtasks []struct {
+	Deadline  *string `json:"deadline"`
+	CreatedAt string  `json:"created_at"`
+	URL       string  `json:"url"`
+	Subtasks  []struct {
 		ID string `json:"id"`
 	} `json:"subtasks"`
 	Comments []struct {
@@ -247,6 +249,9 @@ func TestLiveTaskLifecycle(t *testing.T) {
 		got.Section == nil || *got.Section != "Todo" ||
 		!slices.Contains(got.Labels, label) || len(got.Subtasks) != 1 {
 		t.Errorf("show after add: %+v", got)
+	}
+	if got.CreatedAt == "" || got.URL != "https://app.todoist.com/app/task/"+parent {
+		t.Errorf("show --json must carry created_at and url: %+v", got)
 	}
 
 	mustRun(t, "edit", parent, "-c", "alpha edited", "-P", "2", "--due", "")
