@@ -184,6 +184,10 @@ func TestLiveTaskLifecycle(t *testing.T) {
 	deadline := time.Now().AddDate(0, 1, 0).Format("2006-01-02")
 
 	mustRun(t, "sync")
+	mustRun(t, "cd", projectID)
+	if out := strings.TrimSpace(mustRun(t, "context")); out != projectID+"\t"+project {
+		t.Errorf("cd by ID should store the project name, context = %q", out)
+	}
 	mustRun(t, "cd", project)
 
 	// A project deleted from another client leaves the cache on the next sync.
