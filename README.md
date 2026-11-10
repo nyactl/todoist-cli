@@ -182,7 +182,7 @@ tdc stats --json | jq .overdue                                     # for a promp
 
 ### Completed tasks are scoped to the active project
 
-`ls --done` and the completed counters in `stats` are limited to the active `cd` context, just like the active-task views. With a context set, `ls --done` reports only that project's completions (and says so when there are none); `stats` shows the project name in its header. To review completions across **all** projects, clear the context first with `tdc cd`.
+`ls --done` and the completed counters in `stats` are limited to the active `cd` context, just like the active-task views. With a context set, `ls --done` reports only that project's completions (and says so when there are none); `stats` shows the project name in its header. To review completions across **all** projects, clear the context first with `tdc cd`. Completions in archived projects are not included; Todoist leaves them out of the completed-tasks history.
 
 ### Personal vs shared labels
 

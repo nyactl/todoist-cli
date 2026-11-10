@@ -19,6 +19,10 @@ const completedPageSize = 200
 // in windows the API accepts, and every page of each window is followed.
 func (c *Client) GetCompleted(ctx context.Context, since, until time.Time, projectID string) ([]CompletedTask, error) {
 	var all []CompletedTask
+	// Adjacent windows share their boundary instant, so a completion at that
+	// instant can come back twice. A recurring task legitimately repeats its
+	// ID, hence the key includes the completion time.
+	seen := map[[2]string]bool{}
 	for end := until; end.After(since); end = end.Add(-completedWindow) {
 		start := end.Add(-completedWindow)
 		if start.Before(since) {
@@ -28,7 +32,13 @@ func (c *Client) GetCompleted(ctx context.Context, since, until time.Time, proje
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, items...)
+		for _, t := range items {
+			key := [2]string{t.TaskID, t.CompletedAt}
+			if !seen[key] {
+				seen[key] = true
+				all = append(all, t)
+			}
+		}
 	}
 	return all, nil
 }

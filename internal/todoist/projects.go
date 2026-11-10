@@ -16,6 +16,12 @@ func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
 	return queryAll[Project](c, ctx, "/projects", url.Values{})
 }
 
+// GetProject fetches one project by ID; archived projects are found too.
+func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
+	var p Project
+	return &p, c.doJSON(ctx, "GET", "/projects/"+id, nil, &p)
+}
+
 func (c *Client) CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, error) {
 	var p Project
 	return &p, c.doJSON(ctx, "POST", "/projects", req, &p)

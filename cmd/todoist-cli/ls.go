@@ -275,6 +275,7 @@ func runLsDone(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	lookupMissingNames(ctx, client, items, projectName, sectionName)
 
 	if len(lsLabels) > 0 || len(lsNotLabels) > 0 {
 		if err := validateCompletedLabels(ctx, conn, items, append(append([]string{}, lsLabels...), lsNotLabels...)...); err != nil {
@@ -388,6 +389,27 @@ func cachedNames(ctx context.Context, conn *sql.DB, table string) (map[string]st
 		names[id] = name
 	}
 	return names, rows.Err()
+}
+
+// lookupMissingNames fills in the names of projects and sections that are not
+// cached — archived or deleted since the tasks were completed — by asking the
+// API once per ID. Deleted ones stay unnamed.
+func lookupMissingNames(ctx context.Context, client *todoist.Client, items []todoist.CompletedTask, projectName, sectionName map[string]string) {
+	tried := map[string]bool{}
+	for _, t := range items {
+		if id := t.ProjectID; id != "" && projectName[id] == "" && !tried["p"+id] {
+			tried["p"+id] = true
+			if p, err := client.GetProject(ctx, id); err == nil {
+				projectName[id] = p.Name
+			}
+		}
+		if id := t.SectionID; id != "" && sectionName[id] == "" && !tried["s"+id] {
+			tried["s"+id] = true
+			if sec, err := client.GetSection(ctx, id); err == nil {
+				sectionName[id] = sec.Name
+			}
+		}
+	}
 }
 
 // validateCompletedLabels accepts a label that is known to the cache or

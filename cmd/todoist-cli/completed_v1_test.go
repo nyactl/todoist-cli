@@ -126,3 +126,61 @@ func TestLsDone_NamesComeFromCache(t *testing.T) {
 		t.Errorf("project name should resolve from the cache:\n%s", out)
 	}
 }
+
+// Completed tasks of a project archived since (sync drops it from the cache)
+// still show the project's name, looked up by ID.
+func TestLsDone_NamesOfUncachedProjectsComeFromAPI(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"items":[{"id":"ar1aaaa","content":"Old work","project_id":"parch","section_id":"sarch","labels":[],"completed_at":"2026-08-12T09:00:00Z"}],"next_cursor":null}`))
+	})
+	mux.HandleFunc("/projects/parch", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"parch","name":"Archived","is_archived":true}`))
+	})
+	mux.HandleFunc("/sections/sarch", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"sarch","name":"Shelved","project_id":"parch"}`))
+	})
+	newTestEnv(t, mux)
+
+	out, err := runCmd(t, "ls", "--done", "week")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "  Archived\n") {
+		t.Errorf("archived project's name should be looked up:\n%s", out)
+	}
+	type completed struct {
+		Project *string `json:"project"`
+		Section *string `json:"section"`
+	}
+	got := decodeJSON[[]completed](t, mustJSON(t, "ls", "--done", "week", "--json"))
+	if len(got) != 1 || got[0].Project == nil || *got[0].Project != "Archived" || got[0].Section == nil || *got[0].Section != "Shelved" {
+		t.Errorf("--json project/section = %+v", got)
+	}
+}
+
+// Adjacent windows share their boundary; a task completed exactly then is
+// listed once. A recurring task completed twice is listed twice.
+func TestLsDone_WindowBoundaryDoesNotDuplicate(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(completedPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"items":[
+			{"id":"dup1aaaa","content":"Boundary","project_id":"p1","labels":[],"completed_at":"2026-08-12T09:00:00.000000Z"},
+			{"id":"rec1aaaa","content":"Daily","project_id":"p1","labels":[],"completed_at":"2026-08-11T09:00:00.000000Z"},
+			{"id":"rec1aaaa","content":"Daily","project_id":"p1","labels":[],"completed_at":"2026-08-12T09:00:00.000000Z"}
+		],"next_cursor":null}`))
+	})
+	env := newTestEnv(t, mux)
+	hSeedProject(t, env.conn, "p1", "Work")
+
+	out, err := runCmd(t, "ls", "--done", "year") // several windows, each returning the same items
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out, "Boundary"); n != 1 {
+		t.Errorf("task listed %d times, want once:\n%s", n, out)
+	}
+	if n := strings.Count(out, "Daily"); n != 2 {
+		t.Errorf("recurring task completed twice listed %d times, want 2:\n%s", n, out)
+	}
+}
